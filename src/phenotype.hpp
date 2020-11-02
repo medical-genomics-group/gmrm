@@ -1,25 +1,35 @@
 #pragma once
-
 #include <string>
 #include <vector>
-
-using namespace std;
-
+#include "options.hpp"
 
 class Phenotype {
     
 private:
-    string filepath;
+    std::string filepath;
     int nonas;
     int nas;
-    vector<double> data;
+    std::vector<double> data;
     void read_file();
 
 public:
-    Phenotype() = default;
-    Phenotype(string fp) : filepath(fp), nonas(0), nas(0) {
+    Phenotype(std::string fp) : filepath(fp), nonas(0), nas(0) {
         read_file();
     }
-    string get_filepath() const { return filepath; }
+    std::string get_filepath() const { return filepath; }
     void print_info() const;
 };
+
+
+class PhenMgr {
+
+public:
+    PhenMgr(const Options& opt) {
+        read_phen_files(opt);
+    }
+
+private:
+    std::vector<Phenotype> phen_mgr;
+    void read_phen_files(const Options& opt);
+};
+

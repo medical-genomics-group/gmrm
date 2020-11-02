@@ -4,7 +4,16 @@
 #include <cmath>
 #include "phenotype.hpp"
 
-using namespace std;
+void PhenMgr::read_phen_files(const Options& opt) {
+
+    std::vector<std::string> phen_files = opt.get_phen_files();
+
+    for (auto fp = phen_files.begin(); fp != phen_files.end(); ++fp) {
+        std::cout << "will read phen " << *fp << std::endl;
+        Phenotype phenotype(*fp);
+        phen_mgr.push_back(phenotype);
+    }
+}
 
 
 // Read phenotype file
@@ -12,14 +21,14 @@ using namespace std;
 // One row per individual
 void Phenotype::read_file() {
 
-    ifstream infile(filepath);
-    string line;
-    regex re("\\s+");
+    std::ifstream infile(filepath);
+    std::string line;
+    std::regex re("\\s+");
 
     if (infile.is_open()) {
         nonas = 0, nas = 0;
         while (getline(infile, line)) {
-            sregex_token_iterator first{line.begin(), line.end(), re, -1}, last;
+            std::sregex_token_iterator first{line.begin(), line.end(), re, -1}, last;
             std::vector<std::string> tokens{first, last};
             if (tokens[2] == "NA") {
                 nas += 1;
@@ -31,7 +40,7 @@ void Phenotype::read_file() {
         }
         infile.close();
     } else {
-        cout << "FATAL: could not open phenotype file: " << filepath << endl;
+        std::cout << "FATAL: could not open phenotype file: " << filepath << std::endl;
         exit(EXIT_FAILURE);
     }
 

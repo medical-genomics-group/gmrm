@@ -1,21 +1,20 @@
 #include <iostream>
 #include <mpi.h>
 #include "options.hpp"
-#include "bayes.hpp"
 #include "phenotype.hpp"
-#include "genotype.hpp"
-
+#include "bayes.hpp"
+#include "dimensions.hpp"
 
 int main(int argc, char *argv[]) {
 
-    Options opt(argc, argv);
-
-    BayesRR brr(opt);
-    
-    Genotype geno;
-
+    const Options opt(argc, argv);
+    const PhenMgr phen_mgr(opt);
 
     MPI_Init(NULL, NULL);
+
+    const Dimensions dims(opt);
+
+    BayesRR brr(opt, phen_mgr, dims);
 
     for (int iter = 1; iter <= 10; iter++) {
         
