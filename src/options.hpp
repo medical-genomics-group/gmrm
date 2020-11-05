@@ -17,7 +17,7 @@ public:
     void list_phen_files() const;
     int  count_phen_files() const { return phen_files.size(); }
     int  get_verbosity() const { return verbosity; };
-    bool verbosity_level(const int level) const { return level >= get_verbosity() ? true : false; }
+    bool verbosity_level(const int level) const { return level > get_verbosity() ? false : true; }
 
 private:
     std::string bed_file = "";

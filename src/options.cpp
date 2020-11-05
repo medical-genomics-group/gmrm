@@ -10,6 +10,7 @@
 void Options::read_command_line_options(int argc, char** argv) {
 
     std::stringstream ss;
+    ss << "\nardyh command line options:\n";
 
     for (int i=1; i<argc; ++i) {
 
@@ -41,7 +42,8 @@ void Options::read_command_line_options(int argc, char** argv) {
                 }
             }
         } else if (!strcmp(argv[i], "--verbosity")) {
-            verbosity = atoi(argv[++i]);
+            if (i == argc - 1) fail_if_last(argv, i);
+            verbosity = atoi(argv[++i]);            
             ss << "--verbosity " << verbosity << "\n";
         } else {
             std::cout << "FATAL: option \"" << argv[i] << "\" unknown\n";
