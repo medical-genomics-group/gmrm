@@ -43,13 +43,26 @@ module load gcc mvapich boost eigen
 srun ./bin/ardyh_g \
 --bedfile /work/ext-unil-ctgg/marion/benchmark_simulation/data/ukb_chr2_N_QC.bed \
 --dimfile /work/ext-unil-ctgg/marion/benchmark_simulation/data/ukb_chr2_N_QC.dim \
---phenfiles /work/ext-unil-ctgg/marion/benchmark_simulation/phen/sim_1/data.noHEAD.phen,/work/ext-unil-ctgg/marion/benchmark_simulation/phen/sim_1/data.noHEAD.phen
+--phenfiles /work/ext-unil-ctgg/marion/benchmark_simulation/phen/sim_1/data.noHEAD.phen,/work/ext-unil-ctgg/marion/benchmark_simulation/phen/sim_1/data.noHEAD.phen \
 
 ```
 
 Then submit it:
 
 `sbatch sbatch_ardyh.sh`
+
+
+
+## Processing options
+
+| options     | values                                  | description                                                  |
+| ----------- | --------------------------------------- | ------------------------------------------------------------ |
+| --bedfile   | /path/to/gen                            | Path to the PLINK bed file to be processed.                  |
+| --phenfiles | /path/to/phen1,<br />/path/to/phen2,... | Comma separated (**no space!**) list of phenotype files to be processed. <br />At least one phenotype file is expected. |
+| --dimfile   | /path/to/dim                            | Path to the file containing the dimensions of the genotype: expected <br />to be a single line file containing 2 integers: N and M, N being the number<br />of individuals and M the number of markers. |
+| --verbosity | 0, 1, 2, 3                              | default is 0, printing the bare minimum information on the processing.<br />Level 3 is the debugging mode, printing extensively. |
+
+
 
 
 
