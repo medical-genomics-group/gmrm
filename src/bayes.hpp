@@ -12,7 +12,6 @@ public:
     //Bayes() = default;
     Bayes(const Options& opt, const PhenMgr& pmgr, const Dimensions& dims) : opt(opt), rank(dims.get_rank()), nranks(dims.get_nranks()), Nt(dims.get_nt()), Mt(dims.get_mt()) {
         std::cout << "calling Bayes constructor" << std::endl;
-        check_options();
         setup_processing();
     }
 

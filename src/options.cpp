@@ -40,6 +40,9 @@ void Options::read_command_line_options(int argc, char** argv) {
                     exit(EXIT_FAILURE);
                 }
             }
+        } else if (!strcmp(argv[i], "--verbosity")) {
+            verbosity = atoi(argv[++i]);
+            ss << "--verbosity " << verbosity << "\n";
         } else {
             std::cout << "FATAL: option \"" << argv[i] << "\" unknown\n";
             exit(EXIT_FAILURE);
@@ -59,4 +62,29 @@ void Options::list_phen_files() const {
 void Options::fail_if_last(char** argv, const int i) {
     std::cout << "FATAL  : missing argument for last option \"" << argv[i] <<"\". Please check your input and relaunch." << std::endl;
     exit(EXIT_FAILURE);
+}
+
+// Check for minimal setup: a bed file + a dim file + phen file(s)
+void Options::check_options() {
+    
+    std::cout << "will check passed options for completeness" << std::endl;
+    
+    if (get_bed_file() == "") {
+        std::cout << "FATAL  : no bed file provided! Please use the --bedfile option." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    std::cout << "  bed file: OK - " << get_bed_file() << "\n";
+
+    if (get_dim_file() == "") {
+        std::cout << "FATAL  : no dim file provided! Please use the --dimfile option." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    std::cout << "  dim file: OK - " << get_dim_file() << "\n";
+
+    if (count_phen_files() == 0) {
+        std::cout << "FATAL  : no phen file(s) provided! Please use the --phenfile option." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    std::cout << "  phen file(s): OK - " << count_phen_files() << " files passed.\n";
+    list_phen_files();
 }
