@@ -13,7 +13,10 @@ SOURCES  := $(filter-out $(SRC_EXCL),$(SOURCES))
 
 CXXFLAGS  = -Ofast
 CXXFLAGS += -g
+#CXXFLAGS += -H
 CXXFLAGS += -std=c++17
+CXXFLAGS += -lstdc++fs
+
 
 INCLUDE   = -I$(SOURCEDIR)
 INCLUDE  += -I$(EIGEN_ROOT)/include/eigen3
