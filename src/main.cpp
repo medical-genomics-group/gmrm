@@ -7,20 +7,15 @@
 
 int main(int argc, char *argv[]) {
 
-    const Options opt(argc, argv);
-    const PhenMgr phen_mgr(opt);
-
     MPI_Init(NULL, NULL);
 
+
+    const Options    opt(argc, argv);
     const Dimensions dims(opt);
+    const PhenMgr    pmgr(opt);
 
-    BayesRR brr(opt, phen_mgr, dims);
-
-    for (int iter = 1; iter <= 10; iter++) {
-        
-    }
+    BayesRR brr(opt, pmgr, dims);
 
     MPI_Finalize();
-
     return 0;
 }

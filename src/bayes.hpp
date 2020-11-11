@@ -9,26 +9,30 @@
 class Bayes {
 
 public:
-    //Bayes() = default;
-    Bayes(const Options& opt, const PhenMgr& pmgr, const Dimensions& dims) : opt(opt), rank(dims.get_rank()), nranks(dims.get_nranks()), Nt(dims.get_nt()), Mt(dims.get_mt()) {
+    Bayes(const Options& opt, const PhenMgr& pmgr, const Dimensions& dims) : opt(opt), pmgr(pmgr), rank(dims.get_rank()), nranks(dims.get_nranks()), Nt(dims.get_nt()), Mt(dims.get_mt()) {
         std::cout << "calling Bayes constructor" << std::endl;
         setup_processing();
     }
 
     ~Bayes() {
-        //std::cout << "rank " << rank << " calling Bayes destructor" << std::endl;
         if (bed_data != nullptr)  _mm_free(bed_data);
     }
 
     void list_phen_files() const { opt.list_phen_files(); }
+    int get_Nt() { return Nt; }
+    int get_N()  { return Nt; } // Invariant over tasks
+    int get_Mt() { return Mt; }
+    int get_M()  { return M;  }
+
 
 private:
     const Options opt;
+    PhenMgr pmgr;
     const int Nt = 0;
     const int Mt = 0;
     const int rank = 0;
     const int nranks = 0;
-    char* bed_data = nullptr;
+    unsigned char* bed_data = nullptr;
 
     int S = 0;              // task marker start 
     int M = 0;              // task marker length
@@ -39,6 +43,7 @@ private:
     void setup_processing();
     void set_block_of_markers();
     void load_genotype();
+    void check_processing_setup();
 };
 
 
