@@ -9,12 +9,13 @@ int main(int argc, char *argv[]) {
 
     MPI_Init(NULL, NULL);
 
-
     const Options    opt(argc, argv);
     const Dimensions dims(opt);
     const PhenMgr    pmgr(opt);
 
     BayesRR brr(opt, pmgr, dims);
+
+    brr.process();
 
     MPI_Finalize();
     return 0;

@@ -43,8 +43,20 @@ void Options::read_command_line_options(int argc, char** argv) {
             }
         } else if (!strcmp(argv[i], "--verbosity")) {
             if (i == argc - 1) fail_if_last(argv, i);
-            verbosity = atoi(argv[++i]);            
+            verbosity = atoi(argv[++i]);
             ss << "--verbosity " << verbosity << "\n";
+        } else if (!strcmp(argv[i], "--shuffle-markers")) {
+            if (i == argc - 1) fail_if_last(argv, i);
+            shuffle = (bool) atoi(argv[++i]);
+            ss << "--shuffle-markers " << shuffle << "\n";
+        } else if (!strcmp(argv[i], "--seed")) {
+            if (i == argc - 1) fail_if_last(argv, i);
+            seed = atoi(argv[++i]);
+            if (seed < 0) {
+                std::cout << "FATAL  : seed has to be a positive integer." << std::endl;
+            }
+            seed = (unsigned int) seed;
+            ss << "--seed " << seed << "\n";
         } else {
             std::cout << "FATAL: option \"" << argv[i] << "\" unknown\n";
             exit(EXIT_FAILURE);

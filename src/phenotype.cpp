@@ -4,6 +4,7 @@
 #include <cmath>
 #include <immintrin.h>
 #include <mpi.h>
+#include "utilities.hpp"
 #include "phenotype.hpp"
 #include "dotp_lut.hpp"
 #include "na_lut.hpp"
@@ -16,9 +17,13 @@
 // ! one byte of bed  contains information for 4 individuals
 // ! one byte of phen contains information for 8 individuals
 void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, const int M, const int mbytes) {
+
     for (auto& phen : get_phens()) {
+
         phen.print_info();
         const std::vector<unsigned char> mask4 = phen.get_mask4();
+        double* mave = (double*) _mm_malloc(size_t(M) * sizeof(double), 64);  check_malloc(mave, __LINE__, __FILE__);
+        double* msig = (double*) _mm_malloc(size_t(M) * sizeof(double), 64);  check_malloc(msig, __LINE__, __FILE__);
 
         std::cout << " - loop over " << M << " markers " << std::endl;
         double start = MPI_Wtime();
@@ -37,7 +42,7 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
             }
             double asum = suma[0] + suma[1] + suma[2] + suma[3];
             double bsum = sumb[0] + sumb[1] + sumb[2] + sumb[3];
-            double avg = asum / bsum;
+            double avg  = asum / bsum;
 
             __m256d vave = _mm256_set1_pd(-avg);
             __m256d sums = _mm256_set1_pd(0.0);
@@ -51,9 +56,11 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
                 luta  = _mm256_mul_pd(luta, luta);    // ^2
                 sums  = _mm256_add_pd(sums, luta);    // sum
             }
-            
             double sig = sqrt((sums[0] + sums[1] + sums[2] + sums[3]) / (double(phen.get_nonas()) - 1.0));
             
+            mave[i] = avg;
+            msig[i] = sig;
+
             if (i < 10)
                 printf("avg for marker %d = %20.15f +/- %20.15f %20.15f (%6.1f / %d) %20.15f\n", i, avg, sig, 1.0 / sig, asum, phen.get_nonas() - 1, sums[0] + sums[1] + sums[2] + sums[3]); 
 

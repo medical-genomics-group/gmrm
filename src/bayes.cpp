@@ -3,7 +3,25 @@
 #include <cmath>
 #include "bayes.hpp"
 #include "utilities.hpp"
+#include <boost/range/algorithm.hpp>
 
+void Bayes::process() {
+
+    for (int i=0; i<10; i++)
+        printf("2: %6d\n", midx[i]);
+    if (opt.shuffle_markers())  shuffle_markers();
+    for (int i=0; i<10; i++)
+        printf("1: %6d\n", midx[i]);
+    if (opt.shuffle_markers())  shuffle_markers();
+    for (int i=0; i<10; i++)
+        printf("2: %6d\n", midx[i]);
+}
+
+void Bayes::shuffle_markers() {
+    boost::uniform_int<> unii(0, M-1);
+    boost::variate_generator< boost::mt19937&, boost::uniform_int<> > generator(dist.get_rng(), unii);
+    boost::range::random_shuffle(midx, generator);
+}
 
 // Setup processing: load input files and define MPI task workload
 void Bayes::setup_processing() {
@@ -18,6 +36,7 @@ void Bayes::setup_processing() {
     // Compute phenotype-dependent markers' statistics
     pmgr.compute_markers_statistics(bed_data, get_N(), get_M(), mrk_bytes);
 
+    dist.set_rng((unsigned int)(opt.get_seed() + rank*1000));
 }
 
 void Bayes::check_processing_setup() {
@@ -64,5 +83,9 @@ void Bayes::set_block_of_markers() {
     const int size = Mt / nranks;
     M = rank < modu ? size + 1 : size;
     std::cout << "rank " << rank << " has " << M << " markers over Mt = " << Mt << std::endl;
+
     //@todo: mpi check sum over tasks == Mt
+
+    // List of markers
+    for (int i=0; i<M; ++i) midx.push_back(i);
 }

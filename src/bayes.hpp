@@ -4,6 +4,7 @@
 #include "options.hpp"
 #include "phenotype.hpp"
 #include "dimensions.hpp"
+#include "distributions.hpp"
 
 
 class Bayes {
@@ -18,21 +19,25 @@ public:
         if (bed_data != nullptr)  _mm_free(bed_data);
     }
 
+    void process();
     void list_phen_files() const { opt.list_phen_files(); }
-    int get_Nt() { return Nt; }
-    int get_N()  { return Nt; } // Invariant over tasks
-    int get_Mt() { return Mt; }
-    int get_M()  { return M;  }
+    int  get_Nt() { return Nt; }
+    int  get_N()  { return Nt; } // Invariant over tasks
+    int  get_Mt() { return Mt; }
+    int  get_M()  { return M;  }
+    void shuffle_markers();
 
 
 private:
     const Options opt;
     PhenMgr pmgr;
+    Distributions dist;
     const int Nt = 0;
     const int Mt = 0;
     const int rank = 0;
     const int nranks = 0;
     unsigned char* bed_data = nullptr;
+    std::vector<int> midx;
 
     int S = 0;              // task marker start 
     int M = 0;              // task marker length

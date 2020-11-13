@@ -11,8 +11,8 @@ public:
         read_file(opt);
     }
     ~Phenotype() {
-        if (mavg != nullptr)  _mm_free(mavg);
-        if (mstd != nullptr)  _mm_free(mstd);
+        if (mave != nullptr)  _mm_free(mave);
+        if (msig != nullptr)  _mm_free(msig);
     }
     std::string get_filepath() const { return filepath; }
     void print_info() const;
@@ -28,8 +28,9 @@ private:
     std::vector<double> data;
     std::vector<unsigned char> mask8; // 8 inds per byte
     std::vector<unsigned char> mask4; // 4 inds per byte
-    double* mavg = nullptr;
-    double* mstd = nullptr;
+    double* mave = nullptr;
+    double* msig = nullptr;
+    std::vector<int> midx;
     void read_file(const Options& opt);
 
     friend class PhenMgr;
