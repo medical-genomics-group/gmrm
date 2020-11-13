@@ -20,6 +20,7 @@ public:
     bool verbosity_level(const int level) const { return level > get_verbosity() ? false : true; }
     bool shuffle_markers() const { return shuffle; }
     unsigned int get_seed() const { return seed; }
+    unsigned int get_iterations() const { return iterations; }
 
 private:
     std::string bed_file = "";
@@ -27,6 +28,7 @@ private:
     int verbosity = 0;
     bool shuffle = true;
     unsigned int seed = 0;
+    unsigned int iterations = 1;
     std::vector<std::string> phen_files;
     void check_options();
     void fail_if_last(char** argv, const int i);

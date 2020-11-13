@@ -51,12 +51,20 @@ void Options::read_command_line_options(int argc, char** argv) {
             ss << "--shuffle-markers " << shuffle << "\n";
         } else if (!strcmp(argv[i], "--seed")) {
             if (i == argc - 1) fail_if_last(argv, i);
-            seed = atoi(argv[++i]);
-            if (seed < 0) {
-                std::cout << "FATAL  : seed has to be a positive integer." << std::endl;
+            if (atoi(argv[i + 1]) < 0) {
+                std::cout << "FATAL  : option --seed has to be a positive integer! (" << argv[i + 1] << " was passed)" << std::endl;
+                exit(EXIT_FAILURE);
             }
-            seed = (unsigned int) seed;
+            seed = (unsigned int)atoi(argv[++i]);
             ss << "--seed " << seed << "\n";
+        } else if (!strcmp(argv[i], "--iterations")) {
+            if (i == argc - 1) fail_if_last(argv, i);
+            if (atoi(argv[i + 1]) < 1) {
+                std::cout << "FATAL  : option --iterations has to be a strictly positive integer! (" << argv[i + 1] << " was passed)" << std::endl;
+                exit(EXIT_FAILURE);
+            }
+            iterations = (unsigned int) atoi(argv[++i]);
+            ss << "--iterations " << iterations << "\n";
         } else {
             std::cout << "FATAL: option \"" << argv[i] << "\" unknown\n";
             exit(EXIT_FAILURE);

@@ -4,17 +4,23 @@
 #include "bayes.hpp"
 #include "utilities.hpp"
 #include <boost/range/algorithm.hpp>
+#include <boost/random/uniform_int.hpp>
 
 void Bayes::process() {
 
-    for (int i=0; i<10; i++)
-        printf("2: %6d\n", midx[i]);
-    if (opt.shuffle_markers())  shuffle_markers();
-    for (int i=0; i<10; i++)
-        printf("1: %6d\n", midx[i]);
-    if (opt.shuffle_markers())  shuffle_markers();
-    for (int i=0; i<10; i++)
-        printf("2: %6d\n", midx[i]);
+    double crap1 = dist.beta_rng(1.0, 1.0);
+
+    // Iteration loop
+    for (unsigned int it=0; it<opt.get_iterations(); it++) {
+        
+        double crap2 = dist.norm_rng(0.111, 0.555);
+
+        if (opt.shuffle_markers())  shuffle_markers();
+
+        for (int i=0; i<10; i++)
+            printf("it %4d  midx[%7d] = %7d\n", it, i, midx[i]);
+
+    } // End iteration loop
 }
 
 void Bayes::shuffle_markers() {
