@@ -11,12 +11,12 @@ int main(int argc, char *argv[]) {
 
     const Options    opt(argc, argv);
     const Dimensions dims(opt);
-    const PhenMgr    pmgr(opt);
 
-    BayesRR brr(opt, pmgr, dims);
-
+    BayesRR brr(opt, dims);
     brr.process();
-
+    
+    std::cout << "__END_PROCESSING__" << std::endl;
+    
     MPI_Finalize();
     return 0;
 }

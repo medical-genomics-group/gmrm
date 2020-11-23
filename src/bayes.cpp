@@ -10,15 +10,37 @@ void Bayes::process() {
 
     double crap1 = dist.beta_rng(1.0, 1.0);
 
+    // do all modulo 8 inds
+    //double* y = (double*)_mm_malloc(NDB, 64);  check_malloc(y,          __LINE__, __FILE__);
+    
+
+    double mu = 0.0;
+
+
     // Iteration loop
-    for (unsigned int it=0; it<opt.get_iterations(); it++) {
+    for (unsigned int it = 1; it <= opt.get_iterations(); it++) {
         
+        for (auto& phen : pmgr.get_phens())
+            phen.offset_epsilon(mu);
+
         double crap2 = dist.norm_rng(0.111, 0.555);
+        
+        //todo: mu offset
 
-        if (opt.shuffle_markers())  shuffle_markers();
+        if (opt.shuffle_markers())
+            shuffle_markers();
 
-        for (int i=0; i<10; i++)
-            printf("it %4d  midx[%7d] = %7d\n", it, i, midx[i]);
+       
+        
+
+        // Loop over all phenotyes
+        
+
+        //for (int i=0; i<10; i++)
+        //    printf("it %4d  midx[%7d] = %7d\n", it, i, midx[i]);
+
+        
+
 
     } // End iteration loop
 }
@@ -35,12 +57,12 @@ void Bayes::setup_processing() {
     mrk_bytes = (Nt %  4) ? (size_t) Nt /  4 + 1 : (size_t) Nt /  4;
     mrk_uints = (Nt % 16) ? (size_t) Nt / 16 + 1 : (size_t) Nt / 16;
 
-    set_block_of_markers();
     load_genotype();
+    pmgr.read_phen_files(opt);
     check_processing_setup();
 
     // Compute phenotype-dependent markers' statistics
-    pmgr.compute_markers_statistics(bed_data, get_N(), get_M(), mrk_bytes);
+    pmgr.compute_markers_statistics(bed_data, get_N(), get_M(), mrk_bytes);    
 
     dist.set_rng((unsigned int)(opt.get_seed() + rank*1000));
 }

@@ -65,6 +65,14 @@ void Options::read_command_line_options(int argc, char** argv) {
             }
             iterations = (unsigned int) atoi(argv[++i]);
             ss << "--iterations " << iterations << "\n";
+        }  else if (!strcmp(argv[i], "--trunc-markers")) {
+            if (i == argc - 1) fail_if_last(argv, i);
+            if (atoi(argv[i + 1]) < 1) {
+                std::cout << "FATAL  : option --trunc-markers has to be a strictly positive integer! (" << argv[i + 1] << " was passed)" << std::endl;
+                exit(EXIT_FAILURE);
+            }
+            truncm = (unsigned int) atoi(argv[++i]);
+            ss << "--trunc-markers " << truncm << "\n";
         } else {
             std::cout << "FATAL: option \"" << argv[i] << "\" unknown\n";
             exit(EXIT_FAILURE);

@@ -10,12 +10,19 @@
 class Bayes {
 
 public:
-    Bayes(const Options& opt, const PhenMgr& pmgr, const Dimensions& dims) : opt(opt), pmgr(pmgr), rank(dims.get_rank()), nranks(dims.get_nranks()), Nt(dims.get_nt()), Mt(dims.get_mt()) {
-        std::cout << "calling Bayes constructor" << std::endl;
+    Bayes(const Options&    opt,
+          const Dimensions& dims) : opt(opt),
+                                    //pmgr(opt),
+                                    rank(dims.get_rank()),
+                                    nranks(dims.get_nranks()),
+                                    Nt(dims.get_nt()),
+                                    Mt(dims.get_mt()) {
+        set_block_of_markers();
         setup_processing();
     }
 
     ~Bayes() {
+        //std::cout << "## calling Bayes dtor" << std::endl;
         if (bed_data != nullptr)  _mm_free(bed_data);
     }
 
@@ -23,8 +30,8 @@ public:
     void list_phen_files() const { opt.list_phen_files(); }
     int  get_Nt() { return Nt; }
     int  get_N()  { return Nt; } // Invariant over tasks
-    int  get_Mt() { return Mt; }
-    int  get_M()  { return M;  }
+    int  get_Mt() { return Mt; } // Total number of markers, sum over tasks
+    int  get_M()  { return M;  } // Number of markers processed by task
     void shuffle_markers();
 
 
@@ -55,15 +62,12 @@ private:
 class BayesRR : public Bayes {
 
 public:
-
-    BayesRR(const Options& opt, const PhenMgr& pmgr, const Dimensions& dims) : Bayes(opt, pmgr, dims) { 
-         std::cout << "calling BayesRR constructor" << std::endl;
+    
+    BayesRR(const Options& opt, 
+            const Dimensions& dims) : Bayes(opt,
+                                            dims) { 
+        //std::cout << "calling BayesRR constructor" << std::endl;
     }
-
-    /*
-    BayesRR(const Options& opt, const PhenMgr& pmgr, const Dimensions& dims) : Bayes(opt, pmgr, rank, nranks) {
-    } 
-    */
 };
 
 /*
