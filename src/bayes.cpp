@@ -7,6 +7,7 @@
 void Bayes::process() {
     
     for (auto& phen : pmgr.get_phens()) {
+        phen.set_midx();
         phen.sample_sigmag_beta_rng(1.0, 1.0);
         printf("sample sigmag = %20.15f\n", phen.get_sigmag());
     }
@@ -14,7 +15,7 @@ void Bayes::process() {
     for (unsigned int it = 1; it <= opt.get_iterations(); it++) {
         
         for (auto& phen : pmgr.get_phens()) {
-            phen.set_midx();
+            
             phen.offset_epsilon(phen.get_mu());
             phen.epsilon_stats();
             printf("epssum = %20.15f, sigmae = %20.15f\n", phen.get_epssum(), phen.get_sigmae());
@@ -27,13 +28,10 @@ void Bayes::process() {
 
             if (opt.shuffle_markers())
                 phen.shuffle_midx();
-            for (int i=0; i<10; i++)
-                printf("it %4d  midx[%7d] = %7d\n", it, i, phen.get_midx()[i]);
+            //for (int i=0; i<10; i++)
+            //    printf("it %4d  midx[%7d] = %7d\n", it, i, phen.get_midx()[i]);
 
         }
-        
-
-
     } // End iteration loop
 }
 
