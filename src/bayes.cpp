@@ -3,75 +3,66 @@
 #include <cmath>
 #include "bayes.hpp"
 #include "utilities.hpp"
-#include <boost/range/algorithm.hpp>
-#include <boost/random/uniform_int.hpp>
 
 void Bayes::process() {
-
-    double crap1 = dist.beta_rng(1.0, 1.0);
-
-    // do all modulo 8 inds
-    //double* y = (double*)_mm_malloc(NDB, 64);  check_malloc(y,          __LINE__, __FILE__);
     
+    for (auto& phen : pmgr.get_phens()) {
+        phen.sample_sigmag_beta_rng(1.0, 1.0);
+        printf("sample sigmag = %20.15f\n", phen.get_sigmag());
+    }
 
-    double mu = 0.0;
-
-
-    // Iteration loop
     for (unsigned int it = 1; it <= opt.get_iterations(); it++) {
         
-        for (auto& phen : pmgr.get_phens())
-            phen.offset_epsilon(mu);
+        for (auto& phen : pmgr.get_phens()) {
+            phen.set_midx();
+            phen.offset_epsilon(phen.get_mu());
+            phen.epsilon_stats();
+            printf("epssum = %20.15f, sigmae = %20.15f\n", phen.get_epssum(), phen.get_sigmae());
+            phen.sample_mu_norm_rng();
+            printf("new mu = %20.15f\n", phen.get_mu());
+            phen.offset_epsilon(-phen.get_mu());
 
-        double crap2 = dist.norm_rng(0.111, 0.555);
-        
-        //todo: mu offset
+            // Important that all phens to the shuffling of the
+            // index array of markers midx to keep consistency of their prng
 
-        if (opt.shuffle_markers())
-            shuffle_markers();
+            if (opt.shuffle_markers())
+                phen.shuffle_midx();
+            for (int i=0; i<10; i++)
+                printf("it %4d  midx[%7d] = %7d\n", it, i, phen.get_midx()[i]);
 
-       
-        
-
-        // Loop over all phenotyes
-        
-
-        //for (int i=0; i<10; i++)
-        //    printf("it %4d  midx[%7d] = %7d\n", it, i, midx[i]);
-
+        }
         
 
 
     } // End iteration loop
 }
 
-void Bayes::shuffle_markers() {
-    boost::uniform_int<> unii(0, M-1);
-    boost::variate_generator< boost::mt19937&, boost::uniform_int<> > generator(dist.get_rng(), unii);
-    boost::range::random_shuffle(midx, generator);
-}
 
 // Setup processing: load input files and define MPI task workload
 void Bayes::setup_processing() {
 
-    mrk_bytes = (Nt %  4) ? (size_t) Nt /  4 + 1 : (size_t) Nt /  4;
-    mrk_uints = (Nt % 16) ? (size_t) Nt / 16 + 1 : (size_t) Nt / 16;
+    mrk_bytes = (N %  4) ? (size_t) N /  4 + 1 : (size_t) N /  4;
+    mrk_uints = (N % 16) ? (size_t) N / 16 + 1 : (size_t) N / 16;
 
     load_genotype();
-    pmgr.read_phen_files(opt);
+    pmgr.read_phen_files(opt, get_N(), get_M());
     check_processing_setup();
 
     // Compute phenotype-dependent markers' statistics
-    pmgr.compute_markers_statistics(bed_data, get_N(), get_M(), mrk_bytes);    
+    pmgr.compute_markers_statistics(bed_data, get_N(), get_M(), mrk_bytes);
 
-    dist.set_rng((unsigned int)(opt.get_seed() + rank*1000));
+    // All phenotypes get the same seed, and will sollicitate their own PRN
+    // generator exactly the same way, so that the PRNG state is consistent
+    for (auto& phen : pmgr.get_phens()) {
+        phen.set_rng((unsigned int)(opt.get_seed() + rank*1000));
+    }
 }
 
 void Bayes::check_processing_setup() {
     for (const auto& phen : pmgr.get_phens()) {
         const int Np = phen.get_nas() + phen.get_nonas();
-        if (Np != Nt) {
-            std::cout << "Fatal: Nt = " << Nt << " while phen file " << phen.get_filepath() << " has " << Np << " individuals!" << std::endl;
+        if (Np != N) {
+            std::cout << "Fatal: N = " << N << " while phen file " << phen.get_filepath() << " has " << Np << " individuals!" << std::endl;
             exit(1);
         }
     }
@@ -113,7 +104,4 @@ void Bayes::set_block_of_markers() {
     std::cout << "rank " << rank << " has " << M << " markers over Mt = " << Mt << std::endl;
 
     //@todo: mpi check sum over tasks == Mt
-
-    // List of markers
-    for (int i=0; i<M; ++i) midx.push_back(i);
 }
