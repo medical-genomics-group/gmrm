@@ -4,15 +4,13 @@
 #include <memory>
 #include "options.hpp"
 #include "distributions.hpp"
+//#include "utilities.hpp"
 
 
 class Phenotype {
     
 public:
-    Phenotype(std::string fp, const Options& opt, const int N, const int M) : filepath(fp), N(N), M(M) {
-        //std::cout << ">>>>> calling Phenotype ctor on " << filepath << std::endl;
-        read_file(opt);
-    }
+    Phenotype(std::string fp, const Options& opt, const int N, const int M);
 
     Phenotype(const Phenotype& rhs);
 
@@ -44,6 +42,7 @@ public:
     void sample_sigmag_beta_rng();
     void sample_sigmag_beta_rng(const double a, const double b);
     unsigned int get_random_int() { return dist.get_random_number(); }
+    double get_beta(const int idx) { return betas[idx]; }
 
 private:
     Distributions dist;
@@ -53,11 +52,12 @@ private:
     int im4   = 0;
     const unsigned int M = 0;
     const unsigned int N = 0;
+    std::vector<double> betas;
     std::vector<double> data;
     std::vector<unsigned char> mask4;
     std::vector<int> midx;
-    double* mave    = nullptr;
-    double* msig    = nullptr;
+    double* mave = nullptr;
+    double* msig = nullptr;
     double* epsilon = nullptr; // starts with centered normalized phenotype
     double epssum = 0.0;
     double sigmae = 0.0;

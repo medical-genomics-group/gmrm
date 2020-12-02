@@ -12,10 +12,27 @@
 #include <boost/random/uniform_int.hpp>
 
 
+Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int M) :
+    filepath(fp), N(N), M(M), im4(N%4 == 0 ? N/4 : N/4+1) {
+    //std::cout << ">>>>> calling Phenotype ctor on " << filepath << std::endl;
+    mave = (double*) _mm_malloc(size_t(M) * sizeof(double), 64);
+    check_malloc(mave, __LINE__, __FILE__);
+    msig = (double*) _mm_malloc(size_t(M) * sizeof(double), 64);
+    check_malloc(msig, __LINE__, __FILE__);
+    epsilon = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 64);
+    check_malloc(epsilon, __LINE__, __FILE__);
+    
+    betas.resize(M);
+    for (int i=0; i<M ;i++) betas.at(i) = 0.0;
+
+    read_file(opt);
+}
+
 Phenotype::Phenotype(const Phenotype& rhs) :
     filepath(rhs.filepath),
     nonas(rhs.nonas),
     nas(rhs.nas),
+    betas(rhs.betas),
     data(rhs.data),
     midx(rhs.midx),
     mask4(rhs.mask4),
@@ -27,7 +44,7 @@ Phenotype::Phenotype(const Phenotype& rhs) :
     sigmag(rhs.sigmag),
     mu(rhs.mu),
     dist(rhs.dist) {
-    //std::cout << "####callying Phenotype cpctor" << std::endl;
+    //std::cout << "####callying Phenotype cpctor im4 = " << im4 << std::endl;
     epsilon = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 64);
     check_malloc(epsilon, __LINE__, __FILE__);
     for (int i=0; i<im4*4; i++)
@@ -40,6 +57,7 @@ Phenotype::Phenotype(const Phenotype& rhs) :
         mave[i] = rhs.mave[i];
         msig[i] = rhs.msig[i];
     }
+    //std::cout << "#--# Phenotype cpctor" << std::endl;
 }
 
 void Phenotype::sample_mu_norm_rng() {
@@ -79,9 +97,6 @@ void Phenotype::shuffle_midx() {
 void Phenotype::offset_epsilon(const double offset) {
     for (int i=0; i<im4*4; i++)
         epsilon[i] += offset;
-    //for (int i=nas+nonas; i<im4; i++)
-    //    epsilon[i]  = 0.0;
-    
 }
 
 
@@ -91,8 +106,6 @@ void Phenotype::epsilon_stats() {
     __m256d sume = _mm256_set1_pd(0.0);
     __m256d sums = _mm256_set1_pd(0.0);
     for (int i=0; i<im4; i++) {
-        if (i<10)
-            printf("epsilon[%d] = %20.15f\n", i*4, epsilon[i*4]);
         eps4  = _mm256_load_pd(&epsilon[i*4]);
         lutna = _mm256_load_pd(&na_lut[mask4[i] * 4]);
         eps4  = _mm256_mul_pd(eps4, lutna);
@@ -102,7 +115,7 @@ void Phenotype::epsilon_stats() {
     }
     epssum =  sums[0] + sums[1] + sums[2] + sums[3];
     sigmae = (sume[0] + sume[1] + sume[2] + sume[3]) / double(nonas) * 0.5;
-    printf("??? sigmae = %20.15f\n", sigmae);
+    //printf("??? epssum = %20.15f, sigmae = %20.15f\n", epssum, sigmae);
 }
 
 
@@ -120,12 +133,8 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
         const std::vector<unsigned char> mask4 = phen.get_mask4();
 
         double* mave = phen.get_mave();
-        mave = (double*) _mm_malloc(size_t(M) * sizeof(double), 64);
-        check_malloc(mave, __LINE__, __FILE__);
         double* msig = phen.get_msig();
-        msig = (double*) _mm_malloc(size_t(M) * sizeof(double), 64);
-        check_malloc(msig, __LINE__, __FILE__);
-       
+
         double start = MPI_Wtime();
         
         for (int i=0; i<M; i++) {
@@ -161,10 +170,6 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
             
             mave[i] = avg;
             msig[i] = sig;
-            
-            //if (i < 10)
-            //    printf("avg for marker %d = %20.15f +/- %20.15f %20.15f (%6.1f / %d) %20.15f\n", i, avg, sig, 1.0 / sig, asum, phen.get_nonas() - 1, sums[0] + sums[1] + sums[2] + sums[3]); 
-
         }
         double end = MPI_Wtime();
         std::cout << "statistics took " << end - start << " seconds to run." << std::endl;
@@ -191,16 +196,13 @@ void PhenMgr::read_phen_files(const Options& opt, const int N, const int M) {
     for (auto fp = phen_files.begin(); fp != phen_files.end(); ++fp) {
         if (opt.verbosity_level(3))
             std::cout << "Reading phenotype file: " << *fp << std::endl;
-        //std::cout << "before EMPLACE" << std::endl;
         phens.emplace_back(*fp, opt, N, M);
-        //std::cout << "after EMPLACE" << std::endl;
     }
 }
 
 
-// Read phenotype file
-// Assume PLINK format: Family ID, Individual ID, Phenotype
-// One row per individual
+// Read phenotype file assuming PLINK format:
+// Family ID, Individual ID, Phenotype; One row per individual
 void Phenotype::read_file(const Options& opt) {
 
     std::ifstream infile(filepath);
@@ -220,10 +222,9 @@ void Phenotype::read_file(const Options& opt) {
             std::vector<std::string> tokens{first, last};
             if (tokens[2] == "NA") {
                 nas += 1;
-                data.push_back(NAN);
-                if (opt.verbosity_level(3)) {
+                data.push_back(nan(0));
+                if (opt.verbosity_level(3))
                     std::cout << " ... found NA on line " << line_n << ", m4 = " << m4 << " on byte " << int(line_n / 4) << std::endl;
-                }
                 mask4.at(int(line_n / 4)) &= ~(0b1 << m4);
             } else {
                 nonas += 1;
@@ -243,6 +244,7 @@ void Phenotype::read_file(const Options& opt) {
 
         assert(nas + nonas == N);
 
+        
         // Set last bits to 0 if ninds % 4 != 0
         const int m4 = line_n % 4;
         if (m4 != 0) {
@@ -250,33 +252,29 @@ void Phenotype::read_file(const Options& opt) {
             std::cout << "fatal: missing implementation" << std::endl;
             exit(1);
         }
-
+        
         // Center and scale
         double avg = sum / double(nonas);
-        printf("phen avg = %20.15f\n", avg);
-        
-        // For latter vectorization use im4
-        im4 = data.size() % 4 == 0 ? data.size() / 4 : data.size() / 4 + 1;
-        std::cout << "number of inds found in phen " << data.size() << " -> im4 = " << im4 << std::endl;
+        if (opt.verbosity_level(3))
+            printf("phen avg = %20.15f\n", avg);
 
-        epsilon = (double*) _mm_malloc(size_t(im4 * 4) * sizeof(double), 64);
-        check_malloc(epsilon, __LINE__, __FILE__);
-        
-        // Center and normalize
         double sqn = 0.0;
         for (int i=0; i<data.size(); i++) {
-            if (data[i] != NAN) {
+            if (opt.verbosity_level(3) && i < 20)
+                std::cout << data[i] - avg  << std::endl;
+            if (! isnan(data[i])) {
                 epsilon[i] = data[i] - avg;
                 sqn += epsilon[i] * epsilon[i];
+            } else {
+                epsilon[i] = 0.0;
             }
         }
         sqn = sqrt(double(nonas-1) / sqn);
+        if (opt.verbosity_level(3))
+            printf("phen sqn = %20.15f\n", sqn);
 
-        for (int i=0; i<data.size(); i++) {
-            if (data[i] != NAN) {
-                epsilon[i] *= sqn;
-            }
-        }
+        for (int i=0; i<data.size(); i++)
+            epsilon[i] *= sqn;
 
     } else {
         std::cout << "FATAL: could not open phenotype file: " << filepath << std::endl;
