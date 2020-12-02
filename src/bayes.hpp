@@ -29,6 +29,7 @@ public:
     int  get_N()  { return N;  } // Invariant over tasks
     int  get_M()  { return M;  } // Number of markers processed by task
     int  get_Mt() { return Mt; } // Total number of markers, sum over tasks
+    int  get_Mm() { return Mm; } // Maximum number of markers per task (others may have M + 1)
     void shuffle_markers();
 
 
@@ -41,8 +42,9 @@ private:
     const int nranks = 0;
     unsigned char* bed_data = nullptr;
 
-    int S = 0;              // task marker start 
-    int M = 0;              // task marker length
+    int S  = 0;              // task marker start 
+    int M  = 0;              // task marker length
+    int Mm = 0;
     size_t mrk_bytes = 0;
     size_t mrk_uints = 0;
 

@@ -14,24 +14,44 @@ void Bayes::process() {
 
     for (unsigned int it = 1; it <= opt.get_iterations(); it++) {
         
+        int pi = 0;
         for (auto& phen : pmgr.get_phens()) {
-            
+            pi += 1;
+            printf("phen %d has mu = %20.15f\n", pi, phen.get_mu());
             phen.offset_epsilon(phen.get_mu());
+            printf("STATS 1 for phen %d\n", pi);
             phen.epsilon_stats();
             printf("epssum = %20.15f, sigmae = %20.15f\n", phen.get_epssum(), phen.get_sigmae());
             phen.sample_mu_norm_rng();
             printf("new mu = %20.15f\n", phen.get_mu());
             phen.offset_epsilon(-phen.get_mu());
-
+            printf("STATS 2\n");
+            phen.epsilon_stats();
+            
             // Important that all phens to the shuffling of the
             // index array of markers midx to keep consistency of their prng
-
             if (opt.shuffle_markers())
                 phen.shuffle_midx();
             //for (int i=0; i<10; i++)
             //    printf("it %4d  midx[%7d] = %7d\n", it, i, phen.get_midx()[i]);
-
         }
+
+        for (int mrki=0; mrki<Mm; mrki++) {
+
+            if (mrki < M) {
+                int mrk = pmgr.get_phens()[0].get_midx()[mrki];
+
+                for (auto& phen : pmgr.get_phens()) {
+                    if (mrki < 3)
+                        printf("mrk = %3d has beta = %20.15f\n", mrk, phen.get_beta(mrk));
+                }
+
+            } else {
+                std::cout << "FATAL  : handle me please!" << std::endl;
+                exit(1);
+            }
+        }
+
     } // End iteration loop
 }
 
@@ -45,8 +65,6 @@ void Bayes::setup_processing() {
     load_genotype();
     pmgr.read_phen_files(opt, get_N(), get_M());
     check_processing_setup();
-
-    // Compute phenotype-dependent markers' statistics
     pmgr.compute_markers_statistics(bed_data, get_N(), get_M(), mrk_bytes);
 
     // All phenotypes get the same seed, and will sollicitate their own PRN
@@ -98,8 +116,9 @@ void Bayes::load_genotype() {
 void Bayes::set_block_of_markers() {
     const int modu = Mt % nranks;
     const int size = Mt / nranks;
-    M = rank < modu ? size + 1 : size;
-    std::cout << "rank " << rank << " has " << M << " markers over Mt = " << Mt << std::endl;
+    M  = rank < modu ? size + 1 : size;
+    Mm = Mt % nranks != 0 ? size + 1 : size;
+    std::cout << "rank " << rank << " has " << M << " markers over Mt = " << Mt << ", Mm = " << Mm << std::endl;
 
     //@todo: mpi check sum over tasks == Mt
 }
