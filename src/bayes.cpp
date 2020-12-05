@@ -14,19 +14,17 @@ void Bayes::process() {
 
     for (unsigned int it = 1; it <= opt.get_iterations(); it++) {
         
-        int pi = 0;
+        int pidx = 0;
         for (auto& phen : pmgr.get_phens()) {
-            pi += 1;
-            printf("phen %d has mu = %20.15f\n", pi, phen.get_mu());
+            pidx += 1;
+            printf("phen %d has mu = %20.15f\n", pidx, phen.get_mu());
             phen.offset_epsilon(phen.get_mu());
-            printf("STATS 1 for phen %d\n", pi);
             phen.epsilon_stats();
             printf("epssum = %20.15f, sigmae = %20.15f\n", phen.get_epssum(), phen.get_sigmae());
             phen.sample_mu_norm_rng();
             printf("new mu = %20.15f\n", phen.get_mu());
             phen.offset_epsilon(-phen.get_mu());
-            printf("STATS 2\n");
-            phen.epsilon_stats();
+            //**BUG in original phen.epsilon_stats();
             
             // Important that all phens to the shuffling of the
             // index array of markers midx to keep consistency of their prng
@@ -39,13 +37,26 @@ void Bayes::process() {
         for (int mrki=0; mrki<Mm; mrki++) {
 
             if (mrki < M) {
-                int mrk = pmgr.get_phens()[0].get_midx()[mrki];
-
                 for (auto& phen : pmgr.get_phens()) {
-                    if (mrki < 3)
-                        printf("mrk = %3d has beta = %20.15f\n", mrk, phen.get_beta(mrk));
-                }
 
+                    const int mloc = phen.get_marker_local_index(mrki);
+                    const int mglo = S + mloc;
+                    const int mgrp = get_marker_group(mglo);
+                    std::cout << "mloc = " << mloc << ", mglo = " << mglo << ", mgrp = " << mgrp << std::endl;
+
+                    double beta   = phen.get_beta(mloc);
+                    double sige_g = phen.get_sigmae() / phen.get_sigmag();
+                    double sigg_e = 1.0 / sige_g;
+                    double inv2sige = 1.0 / (2.0 * phen.get_sigmae());
+                    if (mrki < 3)
+                        printf("mrk = %3d has beta = %20.15f; sige_g = %20.15f = %20.15f / %20.15f\n", mloc, phen.get_beta(mloc), sige_g, phen.get_sigmae(), phen.get_sigmag());
+                    
+                    std::vector<double> denom = phen.get_denom();
+                    for (int i=1; i<=K-1; ++i) {
+                        denom.at(i-1) = (double)(N - 1) + sige_g * cvai[mgrp][i];
+                        printf("it %d, rank %d, m %d: denom[%d] = %20.15f, cvai = %20.15f\n", it, rank, mloc, i-1, denom.at(i-1), cvai[mgrp][i]);
+                    }
+                }
             } else {
                 std::cout << "FATAL  : handle me please!" << std::endl;
                 exit(1);

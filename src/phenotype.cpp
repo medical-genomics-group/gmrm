@@ -23,7 +23,10 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     check_malloc(epsilon, __LINE__, __FILE__);
     
     betas.resize(M);
-    for (int i=0; i<M ;i++) betas.at(i) = 0.0;
+    for (int i=0; i<M ;i++)
+        betas.at(i) = 0.0;
+
+    denom.resize(opt.get_s().size());
 
     read_file(opt);
 }
@@ -36,6 +39,7 @@ Phenotype::Phenotype(const Phenotype& rhs) :
     data(rhs.data),
     midx(rhs.midx),
     mask4(rhs.mask4),
+    denom(rhs.denom),
     im4(rhs.im4),
     M(rhs.M),
     N(rhs.N),
@@ -58,6 +62,10 @@ Phenotype::Phenotype(const Phenotype& rhs) :
         msig[i] = rhs.msig[i];
     }
     //std::cout << "#--# Phenotype cpctor" << std::endl;
+}
+
+int Phenotype::get_marker_local_index(const int shuff_idx) {
+    return midx[shuff_idx];
 }
 
 void Phenotype::sample_mu_norm_rng() {

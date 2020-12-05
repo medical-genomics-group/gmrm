@@ -14,9 +14,24 @@ public:
                                     rank(dims.get_rank()),
                                     nranks(dims.get_nranks()),
                                     N(dims.get_nt()),
-                                    Mt(dims.get_mt()) {
+                                    Mt(dims.get_mt()),
+                                    K(opt.get_s().size() + 1),
+                                    ngroups(opt.get_ngroups()) {
         set_block_of_markers();
         setup_processing();
+        
+        cva.resize(ngroups);
+        cvai.resize(ngroups);
+        for (int i=0 ; i<ngroups; i++) {
+            cva[i].resize(K, 0);
+            cvai[i].resize(K, 0);
+            for (int j=0; j<K-1; j++) {
+                cva[i][j+1]  = opt.get_s().at(j);
+                cvai[i][j+1] = 1.0 / cva[i][j+1]; 
+            }
+        }
+        std::cout << "cvai size = " << cvai.size() << std::endl;
+        std::cout << "cvai size = " << cvai[0].size() << std::endl;
     }
 
     ~Bayes() {
@@ -30,8 +45,9 @@ public:
     int  get_M()  { return M;  } // Number of markers processed by task
     int  get_Mt() { return Mt; } // Total number of markers, sum over tasks
     int  get_Mm() { return Mm; } // Maximum number of markers per task (others may have M + 1)
+    int  get_K()  { return K;  }
     void shuffle_markers();
-
+    int  get_marker_group(const int mglob) { return 0; } //todo: adpat when groups are activated
 
 private:
     const Options opt;
@@ -41,6 +57,11 @@ private:
     const int rank = 0;
     const int nranks = 0;
     unsigned char* bed_data = nullptr;
+    const int K = 0;
+    const int ngroups = 0;
+
+    std::vector<std::vector<double>> cva;
+    std::vector<std::vector<double>> cvai;
 
     int S  = 0;              // task marker start 
     int M  = 0;              // task marker length

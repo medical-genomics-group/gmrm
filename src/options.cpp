@@ -3,8 +3,8 @@
 #include <sstream>
 #include <iostream>
 #include <fstream>
+#include <cassert>
 #include "options.hpp"
-
 
 // Function to parse command line options
 void Options::read_command_line_options(int argc, char** argv) {
@@ -45,10 +45,12 @@ void Options::read_command_line_options(int argc, char** argv) {
             if (i == argc - 1) fail_if_last(argv, i);
             verbosity = atoi(argv[++i]);
             ss << "--verbosity " << verbosity << "\n";
+
         } else if (!strcmp(argv[i], "--shuffle-markers")) {
             if (i == argc - 1) fail_if_last(argv, i);
             shuffle = (bool) atoi(argv[++i]);
             ss << "--shuffle-markers " << shuffle << "\n";
+
         } else if (!strcmp(argv[i], "--seed")) {
             if (i == argc - 1) fail_if_last(argv, i);
             if (atoi(argv[i + 1]) < 0) {
@@ -57,6 +59,7 @@ void Options::read_command_line_options(int argc, char** argv) {
             }
             seed = (unsigned int)atoi(argv[++i]);
             ss << "--seed " << seed << "\n";
+
         } else if (!strcmp(argv[i], "--iterations")) {
             if (i == argc - 1) fail_if_last(argv, i);
             if (atoi(argv[i + 1]) < 1) {
@@ -65,6 +68,7 @@ void Options::read_command_line_options(int argc, char** argv) {
             }
             iterations = (unsigned int) atoi(argv[++i]);
             ss << "--iterations " << iterations << "\n";
+
         }  else if (!strcmp(argv[i], "--trunc-markers")) {
             if (i == argc - 1) fail_if_last(argv, i);
             if (atoi(argv[i + 1]) < 1) {
@@ -73,6 +77,22 @@ void Options::read_command_line_options(int argc, char** argv) {
             }
             truncm = (unsigned int) atoi(argv[++i]);
             ss << "--trunc-markers " << truncm << "\n";
+
+        } else if (!strcmp(argv[i], "--S")) {
+            if (i == argc - 1) fail_if_last(argv, i);
+            std::stringstream s_stream(argv[++i]);
+            while(s_stream.good()) {
+                std::string substr;
+                getline(s_stream, substr, ',');
+                S.push_back(stod(substr));
+                assert(S.back() > 0.0);
+                if (S.size() > 1) {
+                    std::cout << S.back() << " > " << S.at(S.size() - 2) << std::endl;
+                    assert(S.back() > S.at(S.size() - 2));
+                }
+            }
+            ss << "--S " << argv[i] << "\n";
+
         } else {
             std::cout << "FATAL: option \"" << argv[i] << "\" unknown\n";
             exit(EXIT_FAILURE);

@@ -23,7 +23,8 @@ public:
     std::string get_filepath() const { return filepath; }
     void print_info() const;
     std::vector<unsigned char>& get_mask4() { return mask4; }
-    std::vector<int>& get_midx() { return midx; }
+    std::vector<int>&           get_midx()  { return midx;  }
+    std::vector<double>&        get_denom() { return denom; }
     int     get_nas()   const { return nas; }
     int     get_nonas() const { return nonas; }
     double* get_mave()        { return mave; }
@@ -43,6 +44,7 @@ public:
     void sample_sigmag_beta_rng(const double a, const double b);
     unsigned int get_random_int() { return dist.get_random_number(); }
     double get_beta(const int idx) { return betas[idx]; }
+    int get_marker_local_index(const int shuff_idx);
 
 private:
     Distributions dist;
@@ -56,6 +58,7 @@ private:
     std::vector<double> data;
     std::vector<unsigned char> mask4;
     std::vector<int> midx;
+    std::vector<double> denom;
     double* mave = nullptr;
     double* msig = nullptr;
     double* epsilon = nullptr; // starts with centered normalized phenotype

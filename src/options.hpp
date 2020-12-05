@@ -22,6 +22,8 @@ public:
     unsigned int get_seed() const { return seed; }
     unsigned int get_iterations() const { return iterations; }
     unsigned int get_truncm() const { return truncm; }
+    const std::vector<double>& get_s() const { return S; }
+    const int& get_ngroups() const { return ngroups; } 
 
 private:
     std::string bed_file = "";
@@ -32,6 +34,8 @@ private:
     unsigned int iterations = 1;
     unsigned int truncm = 0;
     std::vector<std::string> phen_files;
+    std::vector<double> S;
+    int ngroups = 1;
     void check_options();
     void fail_if_last(char** argv, const int i);
 };
