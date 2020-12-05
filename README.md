@@ -13,14 +13,14 @@ cd /path/to/ardyh
 Then, assuming a standard HPC environment:
 
 ```
-module load intel intel-mpi boost eigen
+module load intel intel-mpi boost
 make
 ```
 
 or
 
 ```
-module load gcc mvapich boost eigen
+module load gcc mvapich boost
 make
 ```
 
@@ -47,6 +47,9 @@ srun ./bin/ardyh_g \
 --shuffle-markers 1 \
 --seed 12345 \
 --iterations 10
+--trunc-markers 5
+--S 0.0001,0.001,0.01
+--verbosity 2
 
 ```
 
@@ -58,16 +61,18 @@ Then submit it:
 
 ## Processing options
 
-| options           | values                                  | description                                                  |
-| ----------------- | --------------------------------------- | ------------------------------------------------------------ |
-| --bedfile         | /path/to/gen                            | Path to the PLINK bed file to be processed.                  |
-| --phenfiles       | /path/to/phen1,<br />/path/to/phen2,... | Comma separated (**no space!**) list of phenotype files to be processed. <br />At least one phenotype file is expected. |
-| --dimfile         | /path/to/dim                            | Path to the file containing the dimensions of the genotype: expected <br />to be a single line file containing 2 integers: N and M, N being the number<br />of individuals and M the number of markers. |
-| --verbosity       | 0, 1, 2, 3                              | default is 0, printing the bare minimum information on the processing.<br />Level 3 is the debugging mode, printing extensively. |
-| --shuffle-markers | 0, 1                                    | Shuffling (1) or not (0) the markers.                        |
-| --seed            | unsigned integer                        | Seed for pseudo-random number generator (boost).             |
-| --iterations      | unsigned integer >= 1                   | Number of iterations to run.                                 |
-| --trunc-markers   | unsigned integer >= 1                   | Truncate the number of markers to process.                   |
+| options           |      | values                                  | description                                                  |
+| ----------------- | ---- | --------------------------------------- | ------------------------------------------------------------ |
+| --bedfile         |      | /path/to/gen                            | Path to the PLINK bed file to be processed.                  |
+| --phenfiles       |      | /path/to/phen1,<br />/path/to/phen2,... | Comma separated (**no space!**) list of phenotype files to be processed. <br />At least one phenotype file is expected. |
+| --dimfile         |      | /path/to/dim                            | Path to the file containing the dimensions of the genotype: expected <br />to be a single line file containing 2 integers: N and M, N being the number<br />of individuals and M the number of markers. |
+| --verbosity       |      | 0, 1, 2, 3                              | default is 0, printing the bare minimum information on the processing.<br />Level 3 is the debugging mode, printing extensively. |
+| --shuffle-markers |      | 0, 1                                    | Shuffling (1) or not (0) the markers.                        |
+| --seed            |      | unsigned integer                        | Seed for pseudo-random number generator (boost).             |
+| --iterations      |      | unsigned integer >= 1                   | Number of iterations to run.                                 |
+| --trunc-markers   |      | unsigned integer >= 1                   | Truncate the number of markers to process.                   |
+| --S               |      | 0.0001,0.001,0.01                       | Component assignment; all > 0.0; in increasing order!        |
+|                   |      |                                         |                                                              |
 
 
 
