@@ -40,6 +40,7 @@ public:
     }
 
     void process();
+    double dot_product(const int mloc, double* phen, const double mu, const double sigma);
     void list_phen_files() const { opt.list_phen_files(); }
     int  get_N()  { return N;  } // Invariant over tasks
     int  get_M()  { return M;  } // Number of markers processed by task
@@ -66,8 +67,7 @@ private:
     int S  = 0;              // task marker start 
     int M  = 0;              // task marker length
     int Mm = 0;
-    size_t mrk_bytes = 0;
-    size_t mrk_uints = 0;
+    size_t mbytes = 0;
 
     void check_options();
     void setup_processing();

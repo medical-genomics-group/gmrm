@@ -44,7 +44,9 @@ public:
     void sample_sigmag_beta_rng(const double a, const double b);
     unsigned int get_random_int() { return dist.get_random_number(); }
     double get_beta(const int idx) { return betas[idx]; }
-    int get_marker_local_index(const int shuff_idx);
+    int    get_marker_local_index(const int shuff_idx);
+    double get_marker_ave(const int idx) { return mave[idx]; }
+    double get_marker_sig(const int idx) { return msig[idx]; }
 
 private:
     Distributions dist;
@@ -59,8 +61,8 @@ private:
     std::vector<unsigned char> mask4;
     std::vector<int> midx;
     std::vector<double> denom;
-    double* mave = nullptr;
-    double* msig = nullptr;
+    double* mave    = nullptr;
+    double* msig    = nullptr;
     double* epsilon = nullptr; // starts with centered normalized phenotype
     double epssum = 0.0;
     double sigmae = 0.0;
@@ -84,7 +86,7 @@ public:
     //    std::cout << "/!\\ Calling PhenMgr dtor" << std::endl; 
     //}
     void print_info();
-    void compute_markers_statistics(const unsigned char* bed_data, const int N, const int M, const int mrk_bytes);
+    void compute_markers_statistics(const unsigned char* bed_data, const int N, const int M, const int mbytes);
     std::vector<Phenotype>& get_phens() { return phens; }
     void display_markers_statistics(const int n);
     void read_phen_files(const Options& opt, const int N, const int M);

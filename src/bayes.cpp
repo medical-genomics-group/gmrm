@@ -1,8 +1,11 @@
 #include <iostream>
 #include <limits.h>
 #include <cmath>
+#include <immintrin.h>
 #include "bayes.hpp"
 #include "utilities.hpp"
+#include "dotp_lut.hpp"
+
 
 void Bayes::process() {
     
@@ -37,6 +40,7 @@ void Bayes::process() {
         for (int mrki=0; mrki<Mm; mrki++) {
 
             if (mrki < M) {
+
                 for (auto& phen : pmgr.get_phens()) {
 
                     const int mloc = phen.get_marker_local_index(mrki);
@@ -56,6 +60,10 @@ void Bayes::process() {
                         denom.at(i-1) = (double)(N - 1) + sige_g * cvai[mgrp][i];
                         printf("it %d, rank %d, m %d: denom[%d] = %20.15f, cvai = %20.15f\n", it, rank, mloc, i-1, denom.at(i-1), cvai[mgrp][i]);
                     }
+                    
+                    double num = dot_product(mloc, phen.get_epsilon(), phen.get_marker_ave(mloc), phen.get_marker_sig(mloc));
+                    printf("num = %20.15f\n", num);
+
                 }
             } else {
                 std::cout << "FATAL  : handle me please!" << std::endl;
@@ -66,17 +74,41 @@ void Bayes::process() {
     } // End iteration loop
 }
 
+double Bayes::dot_product(const int mloc, double* phen, const double mu, const double sigma) {
+    std::cout << "### computing dot product ###" << std::endl;
+    
+    unsigned char* bed = &bed_data[mloc * mbytes];
+
+    __m256d luta, lutb, lutna;
+    __m256d p4   = _mm256_set1_pd(0.0);
+    __m256d suma = _mm256_set1_pd(0.0);
+    __m256d sumb = _mm256_set1_pd(0.0);
+
+    for (int j=0; j<mbytes; j++) {
+        luta  = _mm256_load_pd(&dotp_lut_a[bed[j] * 4]);
+        lutb  = _mm256_load_pd(&dotp_lut_b[bed[j] * 4]);
+        p4    = _mm256_load_pd(&phen[j * 4]);
+        //lutna = _mm256_load_pd(&na_lut[mask4[j] * 4]); // phen = 0.0 on NAs!
+        luta  = _mm256_mul_pd(luta, p4);
+        lutb  = _mm256_mul_pd(lutb, p4);
+        suma  = _mm256_add_pd(suma, luta);
+        sumb  = _mm256_add_pd(sumb, lutb);
+    }
+
+    return (1.0 / sigma) * 
+        (suma[0] + suma[1] + suma[2] + suma[3] - mu * (sumb[0] + sumb[1] + sumb[2] + sumb[3]));
+}
+
 
 // Setup processing: load input files and define MPI task workload
 void Bayes::setup_processing() {
 
-    mrk_bytes = (N %  4) ? (size_t) N /  4 + 1 : (size_t) N /  4;
-    mrk_uints = (N % 16) ? (size_t) N / 16 + 1 : (size_t) N / 16;
+    mbytes = (N %  4) ? (size_t) N /  4 + 1 : (size_t) N /  4;
 
     load_genotype();
     pmgr.read_phen_files(opt, get_N(), get_M());
     check_processing_setup();
-    pmgr.compute_markers_statistics(bed_data, get_N(), get_M(), mrk_bytes);
+    pmgr.compute_markers_statistics(bed_data, get_N(), get_M(), mbytes);
 
     // All phenotypes get the same seed, and will sollicitate their own PRN
     // generator exactly the same way, so that the PRNG state is consistent
@@ -102,14 +134,14 @@ void Bayes::load_genotype() {
     const std::string bedfp = opt.get_bed_file();
     check_mpi(MPI_File_open(MPI_COMM_WORLD, bedfp.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &bedfh),  __LINE__, __FILE__);
 
-    const size_t size_bytes = size_t(M) * size_t(mrk_bytes) * sizeof(unsigned char);
+    const size_t size_bytes = size_t(M) * size_t(mbytes) * sizeof(unsigned char);
 
     bed_data = (unsigned char*)_mm_malloc(size_bytes, 64);
     check_malloc(bed_data, __LINE__, __FILE__);
     printf("rank %d allocation %zu bytes (%.3f GB) for the raw data.\n", rank, size_bytes, double(size_bytes) / 1.0E9);
 
     // Offset to section of bed file to be processed by task
-    MPI_Offset offset = size_t(3) + size_t(S) * size_t(mrk_bytes) * sizeof(unsigned char);
+    MPI_Offset offset = size_t(3) + size_t(S) * size_t(mbytes) * sizeof(unsigned char);
 
     // Gather the sizes to determine common number of reads
     size_t max_size_bytes = 0;
