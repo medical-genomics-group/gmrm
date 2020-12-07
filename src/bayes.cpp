@@ -11,8 +11,10 @@ void Bayes::process() {
     
     for (auto& phen : pmgr.get_phens()) {
         phen.set_midx();
-        phen.sample_sigmag_beta_rng(1.0, 1.0);
+        phen.set_sigmag(phen.sample_beta_rng(1.0, 1.0));
         printf("sample sigmag = %20.15f\n", phen.get_sigmag());
+
+        phen.set_pi_est(pi_prior);
     }
 
     for (unsigned int it = 1; it <= opt.get_iterations(); it++) {
@@ -24,7 +26,7 @@ void Bayes::process() {
             phen.offset_epsilon(phen.get_mu());
             phen.epsilon_stats();
             printf("epssum = %20.15f, sigmae = %20.15f\n", phen.get_epssum(), phen.get_sigmae());
-            phen.sample_mu_norm_rng();
+            phen.set_mu(phen.sample_norm_rng());
             printf("new mu = %20.15f\n", phen.get_mu());
             phen.offset_epsilon(-phen.get_mu());
             //**BUG in original phen.epsilon_stats();
@@ -48,22 +50,84 @@ void Bayes::process() {
                     const int mgrp = get_marker_group(mglo);
                     std::cout << "mloc = " << mloc << ", mglo = " << mglo << ", mgrp = " << mgrp << std::endl;
 
-                    double beta   = phen.get_beta(mloc);
+                    double beta   = phen.get_marker_beta(mloc);
                     double sige_g = phen.get_sigmae() / phen.get_sigmag();
                     double sigg_e = 1.0 / sige_g;
                     double inv2sige = 1.0 / (2.0 * phen.get_sigmae());
                     if (mrki < 3)
-                        printf("mrk = %3d has beta = %20.15f; sige_g = %20.15f = %20.15f / %20.15f\n", mloc, phen.get_beta(mloc), sige_g, phen.get_sigmae(), phen.get_sigmag());
+                        printf("mrk = %3d has beta = %20.15f; sige_g = %20.15f = %20.15f / %20.15f\n", mloc, phen.get_marker_beta(mloc), sige_g, phen.get_sigmae(), phen.get_sigmag());
                     
                     std::vector<double> denom = phen.get_denom();
+                    std::vector<double> muk   = phen.get_muk();
+                    std::vector<double> logl  = phen.get_logl();
+                    std::vector<int> comp     = phen.get_comp();
+                    std::vector<std::vector<double>> pi_est = phen.get_pi_est();
+                    std::vector<std::vector<int>> cass = phen.get_cass();
+                    
+
                     for (int i=1; i<=K-1; ++i) {
                         denom.at(i-1) = (double)(N - 1) + sige_g * cvai[mgrp][i];
-                        printf("it %d, rank %d, m %d: denom[%d] = %20.15f, cvai = %20.15f\n", it, rank, mloc, i-1, denom.at(i-1), cvai[mgrp][i]);
+                        //printf("it %d, rank %d, m %d: denom[%d] = %20.15f, cvai = %20.15f\n", it, rank, mloc, i-1, denom.at(i-1), cvai[mgrp][i]);
                     }
                     
                     double num = dot_product(mloc, phen.get_epsilon(), phen.get_marker_ave(mloc), phen.get_marker_sig(mloc));
-                    printf("num = %20.15f\n", num);
+                    //printf("num = %20.15f\n", num);
+                    num += beta * double(phen.get_nonas() - 1);
+                    //printf("it %d, rank %d, mark %d: num = %22.15f, %20.15f, %20.15f\n", it, rank, mloc, num, phen.get_marker_ave(mloc), 1.0 / phen.get_marker_sig(mloc));
 
+                    for (int i=1; i<=K-1; ++i)
+                        muk.at(i) = num / denom.at(i - 1);
+
+                    for (int i=0; i<K; i++) {
+                        logl[i] = log(pi_est[mgrp][i]);
+                        if (i>0) 
+                            logl[i] += -0.5 * log(sigg_e * double(phen.get_nonas() - 1) * cva[mgrp][i] + 1.0) + muk[i] * num * inv2sige;
+                        //printf("logl[%d] = %20.15f\n", i, logl[i]);
+                    }
+                    
+                    double prob = phen.sample_unif_rng();
+
+                    bool zero_acum = false;
+                    double tmp1 = 0.0;
+                    for (int i=0; i<K; i++) {
+                        if (abs(logl[i] - logl[0]) > 700.0) 
+                            zero_acum = true;
+                        tmp1 += exp(logl[i] - logl[0]);
+                    }
+                    zero_acum ? tmp1 = 0.0 : tmp1 = 1.0 / tmp1;
+                    phen.set_marker_acum(mloc, tmp1);
+                    printf("it %d, rank %d, marker %d, acum = %20.15f, prob = %20.15f\n", it, rank, mloc, phen.get_marker_acum(mloc), prob);
+
+                    double dbeta = phen.get_marker_beta(mloc);
+
+                    for (int i=0; i<K; i++) {
+                        if (prob <= phen.get_marker_acum(mloc) || i == K - 1) {
+                            if (i == 0) {
+                                phen.set_marker_beta(mloc, 0.0);
+                            } else {
+                                phen.set_marker_beta(mloc, phen.sample_norm_rng(muk[i], phen.get_sigmae() / denom[i-1]));
+                                printf("@B@ beta update %4d/%4d/%4d muk[%4d] = %15.10f with prob=%15.10f <= acum = %15.10f, denom = %15.10f, sigmaE = %15.10f: beta = %15.10f\n", it, rank, mloc, i, muk[i], prob, phen.get_marker_acum(mloc), denom[i-1], phen.get_sigmae(), phen.get_marker_beta(mloc));
+                            }
+                            cass[mgrp][i] += 1;
+                            comp[mloc] = i;
+                            break;
+                        } else {
+                            bool zero_inc = false;
+                            for (int j=i+1; j<K; j++) {
+                                if (abs(logl[j] - logl[i+1]) > 700.0)
+                                    zero_inc = true;
+                            }
+                            if (!zero_inc) {
+                                double esum = 0.0;
+                                for (int k=0; k<logl.size(); k++)
+                                    esum += exp(logl[k] - logl[i+1]);
+                                phen.set_marker_acum(mloc, phen.get_marker_acum(mloc) + 1.0 / esum);
+                            }
+                        }
+                    }
+                
+                    dbeta -= phen.get_marker_beta(mloc);
+                    printf("iteration %3d, marker %5d: dbeta = %20.15f\n", it, mloc, dbeta);
                 }
             } else {
                 std::cout << "FATAL  : handle me please!" << std::endl;

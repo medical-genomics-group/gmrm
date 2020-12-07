@@ -22,11 +22,18 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     epsilon = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 64);
     check_malloc(epsilon, __LINE__, __FILE__);
     
-    betas.resize(M);
-    for (int i=0; i<M ;i++)
-        betas.at(i) = 0.0;
-
-    denom.resize(opt.get_s().size());
+    const int K = opt.get_s().size() + 1;
+    const int G = opt.get_ngroups();
+    
+    betas.assign(M, 0.0);
+    acum.assign(M, 0.0);
+    muk.assign(K, 0.0);
+    denom.resize(K - 1);
+    logl.resize(K);
+    comp.assign(M, 0);
+    cass.resize(G);
+    for (int i=0 ; i<G; i++)
+        cass[i].assign(K, 0);
 
     read_file(opt);
 }
@@ -40,6 +47,12 @@ Phenotype::Phenotype(const Phenotype& rhs) :
     midx(rhs.midx),
     mask4(rhs.mask4),
     denom(rhs.denom),
+    muk(rhs.muk),
+    logl(rhs.logl),
+    acum(rhs.acum),
+    pi_est(rhs.pi_est),
+    cass(rhs.cass),
+    comp(rhs.comp),
     im4(rhs.im4),
     M(rhs.M),
     N(rhs.N),
@@ -68,13 +81,21 @@ int Phenotype::get_marker_local_index(const int shuff_idx) {
     return midx[shuff_idx];
 }
 
-void Phenotype::sample_mu_norm_rng() {
-    printf("sampling mu with epssum = %20.15f and sigmae = %20.15f; nonas = %d\n", epssum, sigmae, nonas);
-    mu = dist.norm_rng(epssum / double(nonas), sigmae / double(nonas));
+double Phenotype::sample_norm_rng(const double a, const double b) {
+    return dist.norm_rng(a, b);
 }
 
-void Phenotype::sample_sigmag_beta_rng(const double a, const double b) {
-    sigmag = dist.beta_rng(a, b);
+double Phenotype::sample_norm_rng() {
+    printf("sampling mu with epssum = %20.15f and sigmae = %20.15f; nonas = %d\n", epssum, sigmae, nonas);
+    return dist.norm_rng(epssum / double(nonas), sigmae / double(nonas));
+}
+
+double Phenotype::sample_beta_rng(const double a, const double b) {
+    return dist.beta_rng(a, b);
+}
+
+double Phenotype::sample_unif_rng() {
+    return dist.unif_rng();
 }
 
 //void Phenotype::sample_sigmag_beta_rng() {

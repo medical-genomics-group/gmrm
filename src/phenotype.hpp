@@ -25,6 +25,13 @@ public:
     std::vector<unsigned char>& get_mask4() { return mask4; }
     std::vector<int>&           get_midx()  { return midx;  }
     std::vector<double>&        get_denom() { return denom; }
+    std::vector<double>&        get_muk()   { return muk;   }
+    std::vector<double>&        get_logl()  { return logl;  }
+    std::vector<double>&        get_acum()  { return acum;  }
+    std::vector<int>&           get_comp()  { return comp;  }
+    std::vector<std::vector<double>>&  get_pi_est() { return pi_est; }
+    std::vector<std::vector<int>>&     get_cass()   { return cass; }
+    
     int     get_nas()   const { return nas; }
     int     get_nonas() const { return nonas; }
     double* get_mave()        { return mave; }
@@ -34,16 +41,29 @@ public:
     double  get_sigmae()      { return sigmae; }
     double  get_sigmag()      { return sigmag; }
     double  get_mu()          { return mu; }
+
     void offset_epsilon(const double);
     void epsilon_stats();
     void set_rng(const unsigned int);
     void set_midx();
     void shuffle_midx();
-    void sample_mu_norm_rng();
-    void sample_sigmag_beta_rng();
-    void sample_sigmag_beta_rng(const double a, const double b);
+    double sample_norm_rng();
+    double sample_norm_rng(const double a, const double b);
+    double sample_beta_rng();
+    double sample_beta_rng(const double a, const double b);
+    double sample_unif_rng();
     unsigned int get_random_int() { return dist.get_random_number(); }
-    double get_beta(const int idx) { return betas[idx]; }
+        
+    void set_pi_est(const std::vector<std::vector<double>> val) { pi_est = val; }
+    void set_sigmag(const double val) { sigmag = val; }
+    void set_mu(const double val) { mu = val; }
+
+    void   set_marker_acum(const int idx, const double val) { acum[idx] = val; } 
+    double get_marker_acum(const int idx) { return acum[idx]; } 
+
+    void   set_marker_beta(const int idx, const double val) { betas[idx] = val; }
+    double get_marker_beta(const int idx) { return betas[idx]; }
+
     int    get_marker_local_index(const int shuff_idx);
     double get_marker_ave(const int idx) { return mave[idx]; }
     double get_marker_sig(const int idx) { return msig[idx]; }
@@ -61,6 +81,12 @@ private:
     std::vector<unsigned char> mask4;
     std::vector<int> midx;
     std::vector<double> denom;
+    std::vector<double> muk;
+    std::vector<double> logl;
+    std::vector<double> acum;
+    std::vector<int> comp;
+    std::vector<std::vector<double>> pi_est;
+    std::vector<std::vector<int>> cass;
     double* mave    = nullptr;
     double* msig    = nullptr;
     double* epsilon = nullptr; // starts with centered normalized phenotype

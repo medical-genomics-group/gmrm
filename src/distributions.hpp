@@ -1,9 +1,6 @@
 #pragma once
 
-#include <boost/random/mersenne_twister.hpp>
-#include <boost/random/beta_distribution.hpp>
-#include <boost/random/variate_generator.hpp>
-#include <boost/random/normal_distribution.hpp>
+#include <boost/random.hpp>
 
 class Distributions {
 
@@ -32,10 +29,17 @@ public:
 
     double norm_rng(double mean, double sigma2) {
         //std::cout << "@@ norm_rng on " << mean << ", " << sigma2 << std::endl;
-        boost::normal_distribution<double> nd(mean, std::sqrt(sigma2));
-        boost::variate_generator< boost::mt19937&, boost::normal_distribution<> > var_nor(rng, nd);
+        boost::random::normal_distribution<double> nd(mean, std::sqrt(sigma2));
+        boost::random::variate_generator< boost::mt19937&, boost::normal_distribution<> > var_nor(rng, nd);
         return var_nor();
     }
+
+    double unif_rng() {
+        boost::random::uniform_real_distribution<double> myU(0,1);
+        boost::random::variate_generator<boost::mt19937&, boost::random::uniform_real_distribution<> > real_variate_generator(rng, myU);
+        return real_variate_generator();
+    }
+
 
 private:
     boost::mt19937 rng;
