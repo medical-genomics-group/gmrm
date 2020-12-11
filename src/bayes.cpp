@@ -17,17 +17,27 @@ void Bayes::process() {
         phen.set_pi_est(pi_prior);
     }
 
+    const int NPHEN =  pmgr.get_phens().size();
+    const int UPDR  = 3; // Update every 3 markers for now; --option to come...
+    MPI_Request req_update[UPDR];
+    MPI_Request req_dbetas[UPDR];
+    MPI_Status  req_status[UPDR];
+    bool send_update[nranks];
+    bool recv_update[nranks]; //* UPDR];
+
+
+
     for (unsigned int it = 1; it <= opt.get_iterations(); it++) {
         
         int pidx = 0;
         for (auto& phen : pmgr.get_phens()) {
             pidx += 1;
-            printf("phen %d has mu = %20.15f\n", pidx, phen.get_mu());
+            //printf("phen %d has mu = %20.15f\n", pidx, phen.get_mu());
             phen.offset_epsilon(phen.get_mu());
             phen.epsilon_stats();
-            printf("epssum = %20.15f, sigmae = %20.15f\n", phen.get_epssum(), phen.get_sigmae());
+            //printf("epssum = %20.15f, sigmae = %20.15f\n", phen.get_epssum(), phen.get_sigmae());
             phen.set_mu(phen.sample_norm_rng());
-            printf("new mu = %20.15f\n", phen.get_mu());
+            //printf("new mu = %20.15f\n", phen.get_mu());
             phen.offset_epsilon(-phen.get_mu());
             //**BUG in original phen.epsilon_stats();
             
@@ -43,19 +53,31 @@ void Bayes::process() {
 
             if (mrki < M) {
 
+
+                const int mloc = pmgr.get_phens()[0].get_marker_local_index(mrki);
+                const int mglo = S + mloc;
+                const int mgrp = get_marker_group(mglo);
+                //std::cout << "mloc = " << mloc << ", mglo = " << mglo << ", mgrp = " << mgrp << std::endl;
+
+
+                bool    share_mrk = false;
+                double  dbetas[NPHEN];
+
+
+                int pheni = -1;
+
+
+
                 for (auto& phen : pmgr.get_phens()) {
 
-                    const int mloc = phen.get_marker_local_index(mrki);
-                    const int mglo = S + mloc;
-                    const int mgrp = get_marker_group(mglo);
-                    std::cout << "mloc = " << mloc << ", mglo = " << mglo << ", mgrp = " << mgrp << std::endl;
+                    pheni += 1;
 
                     double beta   = phen.get_marker_beta(mloc);
                     double sige_g = phen.get_sigmae() / phen.get_sigmag();
                     double sigg_e = 1.0 / sige_g;
                     double inv2sige = 1.0 / (2.0 * phen.get_sigmae());
-                    if (mrki < 3)
-                        printf("mrk = %3d has beta = %20.15f; sige_g = %20.15f = %20.15f / %20.15f\n", mloc, phen.get_marker_beta(mloc), sige_g, phen.get_sigmae(), phen.get_sigmag());
+                    //if (mrki < 3)
+                    //    printf("mrk = %3d has beta = %20.15f; sige_g = %20.15f = %20.15f / %20.15f\n", mloc, phen.get_marker_beta(mloc), sige_g, phen.get_sigmae(), phen.get_sigmag());
                     
                     std::vector<double> denom = phen.get_denom();
                     std::vector<double> muk   = phen.get_muk();
@@ -96,7 +118,7 @@ void Bayes::process() {
                     }
                     zero_acum ? tmp1 = 0.0 : tmp1 = 1.0 / tmp1;
                     phen.set_marker_acum(mloc, tmp1);
-                    printf("it %d, rank %d, marker %d, acum = %20.15f, prob = %20.15f\n", it, rank, mloc, phen.get_marker_acum(mloc), prob);
+                    //printf("it %d, rank %d, marker %d, acum = %20.15f, prob = %20.15f\n", it, rank, mloc, phen.get_marker_acum(mloc), prob);
 
                     double dbeta = phen.get_marker_beta(mloc);
 
@@ -106,7 +128,8 @@ void Bayes::process() {
                                 phen.set_marker_beta(mloc, 0.0);
                             } else {
                                 phen.set_marker_beta(mloc, phen.sample_norm_rng(muk[i], phen.get_sigmae() / denom[i-1]));
-                                printf("@B@ beta update %4d/%4d/%4d muk[%4d] = %15.10f with prob=%15.10f <= acum = %15.10f, denom = %15.10f, sigmaE = %15.10f: beta = %15.10f\n", it, rank, mloc, i, muk[i], prob, phen.get_marker_acum(mloc), denom[i-1], phen.get_sigmae(), phen.get_marker_beta(mloc));
+                                //printf("@B@ it=%4d, rank=%4d, mloc=%4d: muk[%4d] = %15.10f with prob=%15.10f <= acum = %15.10f, denom = %15.10f, sigmaE = %15.10f: beta = %15.10f\n", it, rank, mloc, i, muk[i], prob, phen.get_marker_acum(mloc), denom[i-1], phen.get_sigmae(), phen.get_marker_beta(mloc));
+                                fflush(stdout);
                             }
                             cass[mgrp][i] += 1;
                             comp[mloc] = i;
@@ -127,8 +150,62 @@ void Bayes::process() {
                     }
                 
                     dbeta -= phen.get_marker_beta(mloc);
-                    printf("iteration %3d, marker %5d: dbeta = %20.15f\n", it, mloc, dbeta);
+                    printf("iteration %3d, marker %5d: dbeta = %20.15f, pheni = %d\n", it, mloc, dbeta, pheni);
+                    dbetas[pheni] = dbeta;
+                    if (abs(dbeta) > 0.0) share_mrk = true;                    
                 }
+
+
+                // Collect information on which tasks need to share a marker
+                MPI_Allgather(&share_mrk,  1, MPI_C_BOOL,
+                              recv_update, 1, MPI_C_BOOL,
+                              MPI_COMM_WORLD);
+
+                int nupdate = 0;
+                int disps[nranks], counts[nranks];
+                int dis_bed[nranks], cnt_bed[nranks];
+                int disp = 0, disp_bed = 0;
+                for (int i=0; i<nranks; i++) {
+                    if (recv_update[i]) {
+                        counts[i]  = NPHEN;
+                        cnt_bed[i] = mbytes;
+                    } else {
+                        counts[i]  = 0;
+                        cnt_bed[i] = 0;
+                    }
+                    disps[i] = disp; 
+                    dis_bed[i] = disp_bed;
+                    printf("mrki = %d, recv_update[%d] = %s %d:%d\n", mrki, i, recv_update[i] ? "true" : "false", disps[i], counts[i]);
+                    disp     += counts[i];
+                    disp_bed += cnt_bed[i];
+                }
+
+                // collect dbetas
+                double recv_dbetas[disp];
+                MPI_Allgatherv(&dbetas, share_mrk ? NPHEN : 0, MPI_DOUBLE,
+                               recv_dbetas, counts, disps, MPI_DOUBLE, MPI_COMM_WORLD);
+                int cnt = 0;
+                for (int i=0; i<nranks; i++) {
+                    printf("from task %d:\n", i);
+                    if (counts[i]) {
+                        for (int j=0; j<counts[i]; j++) {
+                            for (int k=0; k<NPHEN; k++) {
+                                printf(" %d -> %20.15f\n", k, recv_dbetas[cnt]);
+                                cnt++;
+                            }
+                        }
+                    }
+                    printf("\n");
+                }
+                fflush(stdout);
+
+                // collect bed data
+                unsigned char* recv_bed = (unsigned char*) _mm_malloc(disp * mbytes, 64);
+                check_malloc(recv_bed, __LINE__, __FILE__);
+                MPI_Allgatherv(&bed_data[mloc * mbytes], mbytes, MPI_UNSIGNED_CHAR,
+                               recv_bed, cnt_bed, dis_bed, MPI_UNSIGNED_CHAR, MPI_COMM_WORLD);
+                _mm_free(recv_bed);
+
             } else {
                 std::cout << "FATAL  : handle me please!" << std::endl;
                 exit(1);
@@ -139,8 +216,7 @@ void Bayes::process() {
 }
 
 double Bayes::dot_product(const int mloc, double* phen, const double mu, const double sigma) {
-    std::cout << "### computing dot product ###" << std::endl;
-    
+
     unsigned char* bed = &bed_data[mloc * mbytes];
 
     __m256d luta, lutb, lutna;

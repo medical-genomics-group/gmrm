@@ -86,7 +86,7 @@ double Phenotype::sample_norm_rng(const double a, const double b) {
 }
 
 double Phenotype::sample_norm_rng() {
-    printf("sampling mu with epssum = %20.15f and sigmae = %20.15f; nonas = %d\n", epssum, sigmae, nonas);
+    //printf("sampling mu with epssum = %20.15f and sigmae = %20.15f; nonas = %d\n", epssum, sigmae, nonas);
     return dist.norm_rng(epssum / double(nonas), sigmae / double(nonas));
 }
 
@@ -113,7 +113,6 @@ void Phenotype::set_midx() {
 }
 
 void Phenotype::shuffle_midx() {
-    std::cout << "M - 1 = " << M - 1 << std::endl;
     boost::uniform_int<> unii(0, M-1);
     boost::variate_generator< boost::mt19937&, boost::uniform_int<> > generator(dist.get_rng(), unii);
     boost::range::random_shuffle(midx, generator);
