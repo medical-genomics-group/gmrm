@@ -3,7 +3,14 @@
 #include <limits.h>
 #include "utilities.hpp"
 
+double round_dp(const double in) {
+    return in;
 
+    printf("in = %20.15f\n", in);
+    double out = round(in * 1.0E12) / 1.0E12;
+    printf("ou = %20.15f\n", out);
+    return out;
+}
 
 void check_malloc(const void* ptr, const int linenumber, const char* filename) {
     if (ptr == NULL) {

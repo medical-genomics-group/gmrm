@@ -51,12 +51,13 @@ public:
     double dot_product(const int mloc, double* phen, const double mu, const double sigma);
     void list_phen_files() const { opt.list_phen_files(); }
     int  get_N()  { return N;  } // Invariant over tasks
-    int  get_M()  { return M;  } // Number of markers processed by task
+    int  get_M()  { return M; } // Number of markers processed by task
     int  get_Mt() { return Mt; } // Total number of markers, sum over tasks
     int  get_Mm() { return Mm; } // Maximum number of markers per task (others may have M + 1)
     int  get_K()  { return K;  }
     void shuffle_markers();
     int  get_marker_group(const int mglob) { return 0; } //todo: adpat when groups are activated
+    void update_epsilon(const int* counts, const double* dbetas, const unsigned char* recv_bed);
 
 private:
     const Options opt;
@@ -74,8 +75,8 @@ private:
     std::vector<std::vector<double>> pi_prior;
     
 
-    int S  = 0;              // task marker start 
-    int M  = 0;              // task marker length
+    int S = 0;              // task marker start 
+    int M = 0;              // task marker length
     int Mm = 0;
     size_t mbytes = 0;
 

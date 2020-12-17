@@ -118,7 +118,28 @@ void Phenotype::shuffle_midx() {
     boost::range::random_shuffle(midx, generator);
 }
 
+void Phenotype::update_epsilon(const double* dbeta, const unsigned char* bed) {
 
+    const double bs_ = dbeta[0] * dbeta[2]; // lambda = dbeta / marker_sig
+    //printf(" Phenotype::update_epsilon with dbeta = %20.15f, ave = %20.15f, bet/sig = %20.15f\n", dbeta[0], dbeta[1], bs_);
+
+    __m256d mu = _mm256_set1_pd(-1.0 * dbeta[1]);
+    __m256d bs = _mm256_set1_pd(bs_);
+
+    __m256d eps4, deps4, lutna, luta, lutb;
+    
+    for (int i=0; i<im4; i++) {
+        eps4  = _mm256_load_pd(&epsilon[i*4]);
+        lutna = _mm256_load_pd(&na_lut[mask4[i] * 4]);
+        luta  = _mm256_load_pd(&dotp_lut_a[bed[i] * 4]);
+        lutb  = _mm256_load_pd(&dotp_lut_b[bed[i] * 4]);
+        deps4 = _mm256_fmadd_pd(mu, lutb, luta);
+        deps4 = _mm256_mul_pd(deps4, bs);
+        deps4 = _mm256_mul_pd(deps4, lutna);
+        eps4  = _mm256_add_pd(eps4, deps4);
+        _mm256_store_pd(&epsilon[i*4], eps4);
+    }
+}
 
 // Assume all operations to be masked, so don't care about
 // potential extra individuals from last byte of bed
@@ -127,26 +148,31 @@ void Phenotype::offset_epsilon(const double offset) {
         epsilon[i] += offset;
 }
 
-
-// Only depends on NAs 
-void Phenotype::epsilon_stats() {
+void Phenotype::update_epsilon_sum() {
     __m256d eps4, sig4, lutna;
-    __m256d sume = _mm256_set1_pd(0.0);
     __m256d sums = _mm256_set1_pd(0.0);
     for (int i=0; i<im4; i++) {
         eps4  = _mm256_load_pd(&epsilon[i*4]);
         lutna = _mm256_load_pd(&na_lut[mask4[i] * 4]);
         eps4  = _mm256_mul_pd(eps4, lutna);
-        sig4  = _mm256_mul_pd(eps4, eps4);
         sums  = _mm256_add_pd(sums, eps4);
-        sume  = _mm256_add_pd(sume, sig4);
     }
-    epssum =  sums[0] + sums[1] + sums[2] + sums[3];
-    sigmae = (sume[0] + sume[1] + sume[2] + sume[3]) / double(nonas) * 0.5;
-    //printf("??? epssum = %20.15f, sigmae = %20.15f\n", epssum, sigmae);
+    epssum = round_dp(sums[0] + sums[1] + sums[2] + sums[3]);
 }
 
-
+// Only depends on NAs 
+void Phenotype::update_epsilon_sigma() {
+    __m256d eps4, sig4, lutna;
+    __m256d sume = _mm256_set1_pd(0.0);
+    for (int i=0; i<im4; i++) {
+        eps4  = _mm256_load_pd(&epsilon[i*4]);
+        lutna = _mm256_load_pd(&na_lut[mask4[i] * 4]);
+        eps4  = _mm256_mul_pd(eps4, lutna);
+        sig4  = _mm256_mul_pd(eps4, eps4);
+        sume  = _mm256_add_pd(sume, sig4);
+    }
+    sigmae = round_dp((sume[0] + sume[1] + sume[2] + sume[3]) / double(nonas) * 0.5);
+}
 
 
 // Compute mean and associated standard deviation for markers
@@ -180,7 +206,7 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
             }
             double asum = suma[0] + suma[1] + suma[2] + suma[3];
             double bsum = sumb[0] + sumb[1] + sumb[2] + sumb[3];
-            double avg  = asum / bsum;
+            double avg  = round_dp(asum / bsum);
 
             __m256d vave = _mm256_set1_pd(-avg);
             __m256d sums = _mm256_set1_pd(0.0);
@@ -194,10 +220,11 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
                 luta  = _mm256_mul_pd(luta, luta);    // ^2
                 sums  = _mm256_add_pd(sums, luta);    // sum
             }
-            double sig = sqrt((sums[0] + sums[1] + sums[2] + sums[3]) / (double(phen.get_nonas()) - 1.0));
-            
+            double sig = round_dp(1.0 / sqrt((sums[0] + sums[1] + sums[2] + sums[3]) / (double(phen.get_nonas()) - 1.0)));
             mave[i] = avg;
             msig[i] = sig;
+            if (i<10)
+                printf("marker %d: %20.15f +/- %20.15f\n", i, mave[i], msig[i]);
         }
         double end = MPI_Wtime();
         std::cout << "statistics took " << end - start << " seconds to run." << std::endl;

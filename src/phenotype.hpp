@@ -43,7 +43,9 @@ public:
     double  get_mu()          { return mu; }
 
     void offset_epsilon(const double);
-    void epsilon_stats();
+    void update_epsilon_sum();
+    void update_epsilon_sigma();
+
     void set_rng(const unsigned int);
     void set_midx();
     void shuffle_midx();
@@ -67,6 +69,8 @@ public:
     int    get_marker_local_index(const int shuff_idx);
     double get_marker_ave(const int idx) { return mave[idx]; }
     double get_marker_sig(const int idx) { return msig[idx]; }
+
+    void update_epsilon(const double* dbeta, const unsigned char* bed);
 
 private:
     Distributions dist;
