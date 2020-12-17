@@ -1,7 +1,7 @@
 #!/bin/bash
 
-module purge
+#module purge
 
-module load intel intel-mpi boost eigen
+module load intel intel-mpi boost
 
 make $1
