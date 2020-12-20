@@ -9,22 +9,31 @@
 class Bayes {
 
 public:
-    Bayes(const Options&    opt,
-          const Dimensions& dims) : opt(opt),
-                                    rank(dims.get_rank()),
-                                    nranks(dims.get_nranks()),
-                                    N(dims.get_nt()),
-                                    Mt(dims.get_mt()),
-                                    K(opt.get_s().size() + 1),
-                                    ngroups(opt.get_ngroups()) {
-        set_block_of_markers();
-        setup_processing();
-        
+
+    const double V0E  = 0.0001;
+    const double S02E = 0.0001;
+    const double V0G  = 0.0001;
+    const double S02G = 0.0001;
+
+
+    Bayes(const Options& opt, const Dimensions& dims) : opt(opt),
+                                                        rank(dims.get_rank()),
+                                                        nranks(dims.get_nranks()),
+                                                        N(dims.get_nt()),
+                                                        Mt(dims.get_mt()),
+                                                        K(opt.get_s().size() + 1),
+                                                        ngroups(opt.get_ngroups()) {
+
         cva.resize(ngroups);
         cvai.resize(ngroups);
         pi_prior.resize(ngroups);
+        mtotgrp.resize(ngroups);
+
+        set_block_of_markers();
 
         for (int i=0 ; i<ngroups; i++) {
+            mtotgrp.at(i) = 0;
+            std::cout << " Bayes ctor " << mtotgrp.at(i) << std::endl;
             cva[i].resize(K, 0);
             cvai[i].resize(K, 0);
             double sum_cva = 0.0;
@@ -40,6 +49,8 @@ public:
                 //printf("pi_prior[%d][%d] = %20.15f\n", i, j+1, pi_prior[i][j+1]);
             }
         }        
+
+        setup_processing();
     }
 
     ~Bayes() {
@@ -69,11 +80,11 @@ private:
     unsigned char* bed_data = nullptr;
     const int K = 0;
     const int ngroups = 0;
-
+    
+    std::vector<int> mtotgrp;
     std::vector<std::vector<double>> cva;
     std::vector<std::vector<double>> cvai;
     std::vector<std::vector<double>> pi_prior;
-    
 
     int S = 0;              // task marker start 
     int M = 0;              // task marker length

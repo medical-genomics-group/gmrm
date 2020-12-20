@@ -39,7 +39,8 @@ public:
     double* get_epsilon()     { return epsilon; }
     double  get_epssum()      { return epssum; }
     double  get_sigmae()      { return sigmae; }
-    double  get_sigmag()      { return sigmag; }
+    void    set_sigmae(const double val) { sigmae = val; }
+    std::vector<double>* get_sigmag()      { return &sigmag; }
     double  get_mu()          { return mu; }
 
     void offset_epsilon(const double);
@@ -54,10 +55,15 @@ public:
     double sample_beta_rng();
     double sample_beta_rng(const double a, const double b);
     double sample_unif_rng();
+    double sample_inv_scaled_chisq_rng(const double a, const double b);
+
     unsigned int get_random_int() { return dist.get_random_number(); }
         
     void set_pi_est(const std::vector<std::vector<double>> val) { pi_est = val; }
-    void set_sigmag(const double val) { sigmag = val; }
+    void   set_pi_est(const int group, const int k, const double val) { pi_est[group][k] = val; }
+    double get_pi_est(const int group, const int k) { return pi_est[group][k]; }
+
+    //void set_sigmag(const double val) { sigmag = val; }
     void set_mu(const double val) { mu = val; }
 
     void   set_marker_acum(const int idx, const double val) { acum[idx] = val; } 
@@ -71,6 +77,25 @@ public:
     double get_marker_sig(const int idx) { return msig[idx]; }
 
     void update_epsilon(const double* dbeta, const unsigned char* bed);
+    double epsilon_sumsqr();
+
+    void reset_beta_sqn_to_zero() {
+        std::fill(beta_sqn.begin(), beta_sqn.end(), 0.0);
+    }
+    void increment_beta_sqn(const int group, const double val);
+    double get_beta_sqn_for_group(const int group) { return beta_sqn.at(group); }
+    
+    void reset_m0() { std::fill(m0.begin(), m0.end(), 0); }
+    void set_m0_for_group(const int group, const int val) { m0.at(group) = val; }
+    int  get_m0_for_group(const int group) { return m0.at(group); }
+
+    void reset_cass() { for (int i=0; i<G; i++) cass[i].assign(K, 0); }
+    int  get_cass_for_group(const int group, const int k) { return cass[group][k]; }
+    void increment_cass(const int group, const int k, const int val) { cass[group][k] += val; }
+    void   set_sigmag_for_group(const int group, const double val) { sigmag.at(group) = val; }
+    double get_sigmag_for_group(const int group) { return sigmag.at(group); }
+
+    void update_pi_est_dirichlet(const int group);
 
 private:
     Distributions dist;
@@ -80,6 +105,8 @@ private:
     int im4   = 0;
     const unsigned int M = 0;
     const unsigned int N = 0;
+    const unsigned int G = 0;
+    const unsigned int K = 0;
     std::vector<double> betas;
     std::vector<double> data;
     std::vector<unsigned char> mask4;
@@ -89,14 +116,18 @@ private:
     std::vector<double> logl;
     std::vector<double> acum;
     std::vector<int> comp;
+    std::vector<double> beta_sqn;
+    std::vector<double> beta_sqn_sum;
+    std::vector<int> m0;
     std::vector<std::vector<double>> pi_est;
     std::vector<std::vector<int>> cass;
+    std::vector<double> dirich;
     double* mave    = nullptr;
     double* msig    = nullptr;
     double* epsilon = nullptr; // starts with centered normalized phenotype
     double epssum = 0.0;
     double sigmae = 0.0;
-    double sigmag = 0.0;
+    std::vector<double> sigmag;
     double mu     = 0.0;
     void read_file(const Options& opt);
     friend class PhenMgr;

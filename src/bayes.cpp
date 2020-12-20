@@ -11,14 +11,16 @@ void Bayes::process() {
     
     for (auto& phen : pmgr.get_phens()) {
         phen.set_midx();
-        phen.set_sigmag(phen.sample_beta_rng(1.0, 1.0));
-        //printf("sample sigmag = %20.15f\n", phen.get_sigmag());
-        double sigmag_r0 = phen.get_sigmag();
-        //check_mpi(MPI_Bcast(sigmaG.data(), sigmaG.size(), MPI_DOUBLE, 0, MPI_COMM_WORLD), __LINE__, __FILE__);
-        check_mpi(MPI_Bcast(&sigmag_r0, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD), __LINE__, __FILE__);
-        phen.set_sigmag(sigmag_r0);
+        for (int i=0; i<opt.get_ngroups(); i++) {
+            phen.set_sigmag_for_group(i, phen.sample_beta_rng(1.0, 1.0));
+            printf("sample sigmag[%d] = %20.15f\n", i, phen.get_sigmag_for_group(i));
+        }
+        double* sigmag_r0 = phen.get_sigmag()->data();
+        check_mpi(MPI_Bcast(sigmag_r0, opt.get_ngroups(), MPI_DOUBLE, 0, MPI_COMM_WORLD), __LINE__, __FILE__);
+        //check_mpi(MPI_Bcast(&sigmag_r0, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD), __LINE__, __FILE__);
+        //phen.set_sigmag(sigmag_r0);
         phen.set_pi_est(pi_prior);
-        //printf("sample sigmag = %20.15f\n", phen.get_sigmag());        
+        printf("sample sigmag[0] = %20.15f\n", phen.get_sigmag()->at(0));        
     }
 
     const int NPHEN =  pmgr.get_phens().size();
@@ -30,17 +32,20 @@ void Bayes::process() {
     bool recv_update[nranks]; //* UPDR];
 
 
-
     for (unsigned int it = 1; it <= opt.get_iterations(); it++) {
-        
+
+        printf("\n@@@### ITERATION %5d\n", it);
+
         int pidx = 0;
         for (auto& phen : pmgr.get_phens()) {
             pidx += 1;
             //printf("phen %d has mu = %20.15f\n", pidx, phen.get_mu());
             phen.offset_epsilon(phen.get_mu());
             phen.update_epsilon_sum();
-            phen.update_epsilon_sigma();
-            printf("epssum = %20.15f, sigmae = %20.15f\n", phen.get_epssum(), phen.get_sigmae());
+            if (it == 1) {
+                phen.update_epsilon_sigma();
+                printf("epssum = %20.15f, sigmae = %20.15f\n", phen.get_epssum(), phen.get_sigmae());
+            }
             phen.set_mu(phen.sample_norm_rng());
             printf("new mu = %20.15f\n", phen.get_mu());
             phen.offset_epsilon(-phen.get_mu());
@@ -52,6 +57,8 @@ void Bayes::process() {
                 phen.shuffle_midx();
             //for (int i=0; i<10; i++)
             //    printf("it %4d  midx[%7d] = %7d\n", it, i, phen.get_midx()[i]);
+            phen.reset_m0();
+            phen.reset_cass();
         }
 
         for (int mrki=0; mrki<Mm; mrki++) {
@@ -73,7 +80,7 @@ void Bayes::process() {
                     pheni += 1;
 
                     double beta   = phen.get_marker_beta(mloc);
-                    double sige_g = phen.get_sigmae() / phen.get_sigmag();
+                    double sige_g = phen.get_sigmae() / phen.get_sigmag_for_group(get_marker_group(mglo));
                     double sigg_e = 1.0 / sige_g;
                     double inv2sige = 1.0 / (2.0 * phen.get_sigmae());
                     //if (mrki < 3)
@@ -84,7 +91,7 @@ void Bayes::process() {
                     std::vector<double> logl  = phen.get_logl();
                     std::vector<int> comp     = phen.get_comp();
                     std::vector<std::vector<double>> pi_est = phen.get_pi_est();
-                    std::vector<std::vector<int>> cass = phen.get_cass();
+                    //std::vector<std::vector<int>> cass = phen.get_cass();
                     
 
                     for (int i=1; i<=K-1; ++i) {
@@ -136,7 +143,9 @@ void Bayes::process() {
                                 //printf("@B@ it=%4d, rank=%4d, mloc=%4d: muk[%4d] = %15.10f with prob=%15.10f <= acum = %15.10f, denom = %15.10f, sigmaE = %15.10f: beta = %15.10f\n", it, rank, mloc, i, muk[i], prob, phen.get_marker_acum(mloc), denom[i-1], phen.get_sigmae(), phen.get_marker_beta(mloc));
                                 fflush(stdout);
                             }
-                            cass[mgrp][i] += 1;
+                            //cass[mgrp][i] += 1;
+                            phen.increment_cass(mgrp, i, 1);
+                            std::cout << "cass " << mgrp << " " << i << " = " << phen.get_cass_for_group(mgrp,i) << std::endl;
                             comp[mloc] = i;
                             break;
                         } else {
@@ -205,7 +214,48 @@ void Bayes::process() {
                 std::cout << "FATAL  : handle me please!" << std::endl;
                 exit(1);
             }
+        } // End marker loop
+
+        for (auto& phen : pmgr.get_phens()) {
+
+            phen.reset_beta_sqn_to_zero();
+            for (int i=0; i<M; i++) {
+                phen.increment_beta_sqn(get_marker_group(i), phen.get_marker_beta(i) * phen.get_marker_beta(i));
+            }
+            printf("iteration %d, rank %d: beta_sqn[0] = %20.15f\n", it, rank, phen.get_beta_sqn_for_group(0));
+
+            
+            for (int i=0; i<opt.get_ngroups(); i++) {
+                std::cout << i << " " << mtotgrp.at(i) << " - " << phen.get_cass_for_group(i, 0) << std::endl;
+                phen.set_m0_for_group(i, mtotgrp.at(i) - phen.get_cass_for_group(i, 0));
+                
+                std::cout << i << " " << phen.get_m0_for_group(i) << std::endl;
+
+                phen.set_sigmag_for_group(i, phen.sample_inv_scaled_chisq_rng(V0G + (double) phen.get_m0_for_group(i), (phen.get_beta_sqn_for_group(i) * (double) phen.get_m0_for_group(i) + V0G * S02G) / (V0G + (double) phen.get_m0_for_group(i))));
+                printf("sigmaG[%d] = %20.15f\n", i, phen.get_sigmag_for_group(i));
+
+                phen.update_pi_est_dirichlet(i);
+            }
+
+
+            
+            if (nranks > 1) {
+                std::cout << "ADAPT!" << std::endl;
+                exit(1);
+            }
+
+            double e_sqn = phen.epsilon_sumsqr();
+            printf("e_sqn = %20.15f, v0E = %20.15f, s02E = %20.15f\n", e_sqn, V0E, S02E);
+            
+            //EO: sample sigmaE and broadcast the one from rank 0 to all the others
+            phen.set_sigmae(phen.sample_inv_scaled_chisq_rng(V0E + (double)N, (e_sqn + V0E * S02E) / (V0E + (double)N)));
+            
+            double sigmae_r0 = phen.get_sigmae();
+            check_mpi(MPI_Bcast(&sigmae_r0, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD), __LINE__, __FILE__);
+            phen.set_sigmae(sigmae_r0);
+            printf("new global sigmaE = %20.15f\n", phen.get_sigmae());
         }
+
 
     } // End iteration loop
 }
@@ -276,6 +326,11 @@ void Bayes::setup_processing() {
     for (auto& phen : pmgr.get_phens()) {
         phen.set_rng((unsigned int)(opt.get_seed() + rank*1000));
     }
+
+    for (int i=0; i<Mt; i++) {
+        mtotgrp.at(get_marker_group(i)) += 1;
+    }
+    printf("mtotgro at %d = %d\n", 0, mtotgrp.at(0));
 }
 
 

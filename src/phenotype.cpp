@@ -13,7 +13,9 @@
 
 
 Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int M) :
-    filepath(fp), N(N), M(M), im4(N%4 == 0 ? N/4 : N/4+1) {
+    filepath(fp), N(N), M(M), im4(N%4 == 0 ? N/4 : N/4+1),
+    K(opt.get_s().size() + 1),
+    G(opt.get_ngroups()) {
     //std::cout << ">>>>> calling Phenotype ctor on " << filepath << std::endl;
     mave = (double*) _mm_malloc(size_t(M) * sizeof(double), 64);
     check_malloc(mave, __LINE__, __FILE__);
@@ -21,9 +23,6 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     check_malloc(msig, __LINE__, __FILE__);
     epsilon = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 64);
     check_malloc(epsilon, __LINE__, __FILE__);
-    
-    const int K = opt.get_s().size() + 1;
-    const int G = opt.get_ngroups();
     
     betas.assign(M, 0.0);
     acum.assign(M, 0.0);
@@ -34,6 +33,12 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     cass.resize(G);
     for (int i=0 ; i<G; i++)
         cass[i].assign(K, 0);
+    beta_sqn.resize(G);
+    beta_sqn_sum.resize(G);
+    m0.resize(G);
+    sigmag.resize(G);
+    dirich.clear();
+    for (int i=0; i<K; i++) dirich.push_back(1.0);
 
     read_file(opt);
 }
@@ -77,8 +82,38 @@ Phenotype::Phenotype(const Phenotype& rhs) :
     //std::cout << "#--# Phenotype cpctor" << std::endl;
 }
 
+
+void Phenotype::update_pi_est_dirichlet(const int group) {
+    std::vector<double> tmp;
+    const int K = cass[group].size();
+    double sum = 0.0;
+    for (int i=0; i<K; i++) {
+        double val = dist.rgamma((double)cass[group][i] + dirich[i], 1.0);
+        set_pi_est(group, i, val);
+        sum += val;
+    }
+    for (int i=0; i<K; i++)
+        set_pi_est(group, i, get_pi_est(group, i) / sum);
+}
+
+double Phenotype::epsilon_sumsqr() {
+    double sumsqr = 0.0;
+    for (int i=0; i<N; i++) {
+        sumsqr += epsilon[i] * epsilon[i];
+    }
+    return sumsqr;
+}
+
+void Phenotype::increment_beta_sqn(const int group, const double val) {
+    beta_sqn.at(group) += val;
+}
+
 int Phenotype::get_marker_local_index(const int shuff_idx) {
     return midx[shuff_idx];
+}
+
+double Phenotype::sample_inv_scaled_chisq_rng(const double a, const double b) {
+    return dist.inv_scaled_chisq_rng(a, b);
 }
 
 double Phenotype::sample_norm_rng(const double a, const double b) {
