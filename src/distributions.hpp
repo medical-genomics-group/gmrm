@@ -18,6 +18,20 @@ public:
         return rng;
     }
 
+    double inv_scaled_chisq_rng(const double a, const double b) {
+        return inv_gamma_rng(0.5 * a, 0.5 * a * b);
+    }
+
+    double inv_gamma_rng(const double a, const double b) {
+        return 1.0 / rgamma(a, 1.0 / b);
+    }
+
+    double rgamma(const double a, const double b) {
+        boost::random::gamma_distribution<double> myGamma(a, b);
+        boost::random::variate_generator<boost::mt19937&, boost::random::gamma_distribution<> > rand_gamma(rng, myGamma);
+        return rand_gamma();
+    }
+
     double beta_rng(const double a, const double b) {
         //std::cout << "@@ beta_rng " << a << ", " << b << std::endl;
         boost::random::beta_distribution<double> mybeta(a, b);
