@@ -87,7 +87,7 @@ void Options::read_command_line_options(int argc, char** argv) {
                 S.push_back(stod(substr));
                 assert(S.back() > 0.0);
                 if (S.size() > 1) {
-                    std::cout << S.back() << " > " << S.at(S.size() - 2) << std::endl;
+                    //std::cout << S.back() << " > " << S.at(S.size() - 2) << std::endl;
                     assert(S.back() > S.at(S.size() - 2));
                 }
             }

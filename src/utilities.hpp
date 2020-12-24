@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <cmath>
 
+
 void check_malloc(const void* ptr, const int linenumber, const char* filename);
 
 void check_mpi(const int error, const int linenumber, const char* filename);

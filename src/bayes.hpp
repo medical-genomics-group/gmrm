@@ -22,18 +22,17 @@ public:
                                                         N(dims.get_nt()),
                                                         Mt(dims.get_mt()),
                                                         K(opt.get_s().size() + 1),
-                                                        ngroups(opt.get_ngroups()) {
+                                                        G(opt.get_ngroups())  {
 
-        cva.resize(ngroups);
-        cvai.resize(ngroups);
-        pi_prior.resize(ngroups);
-        mtotgrp.resize(ngroups);
+        cva.resize(G);
+        cvai.resize(G);
+        pi_prior.resize(G);
+        mtotgrp.resize(G);
 
         set_block_of_markers();
 
-        for (int i=0 ; i<ngroups; i++) {
+        for (int i=0 ; i<G; i++) {
             mtotgrp.at(i) = 0;
-            std::cout << " Bayes ctor " << mtotgrp.at(i) << std::endl;
             cva[i].resize(K, 0);
             cvai[i].resize(K, 0);
             double sum_cva = 0.0;
@@ -79,7 +78,7 @@ private:
     const int nranks = 0;
     unsigned char* bed_data = nullptr;
     const int K = 0;
-    const int ngroups = 0;
+    const int G = 0;
     
     std::vector<int> mtotgrp;
     std::vector<std::vector<double>> cva;

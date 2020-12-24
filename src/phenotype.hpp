@@ -19,6 +19,7 @@ public:
         if (mave    != nullptr)  _mm_free(mave);
         if (msig    != nullptr)  _mm_free(msig);
         if (epsilon != nullptr)  _mm_free(epsilon);
+        if (cass    != nullptr)  _mm_free(cass);
     }
     std::string get_filepath() const { return filepath; }
     void print_info() const;
@@ -30,7 +31,8 @@ public:
     std::vector<double>&        get_acum()  { return acum;  }
     std::vector<int>&           get_comp()  { return comp;  }
     std::vector<std::vector<double>>&  get_pi_est() { return pi_est; }
-    std::vector<std::vector<int>>&     get_cass()   { return cass; }
+    int* get_cass()     { return cass; }
+
     
     int     get_nas()   const { return nas; }
     int     get_nonas() const { return nonas; }
@@ -40,7 +42,7 @@ public:
     double  get_epssum()      { return epssum; }
     double  get_sigmae()      { return sigmae; }
     void    set_sigmae(const double val) { sigmae = val; }
-    std::vector<double>* get_sigmag()      { return &sigmag; }
+    std::vector<double>* get_sigmag()    { return &sigmag; }
     double  get_mu()          { return mu; }
 
     void offset_epsilon(const double);
@@ -84,14 +86,38 @@ public:
     }
     void increment_beta_sqn(const int group, const double val);
     double get_beta_sqn_for_group(const int group) { return beta_sqn.at(group); }
-    
+    std::vector<double>* get_beta_sqn ()     { return &beta_sqn; }
+
+    void set_beta_sqn(const double* in) {
+        for (int i=0; i<G; i++)  beta_sqn[i] = in[i];
+    }
+
+    void reset_cass() {
+        for (int i=0; i<G*K; i++) {
+            cass[i] = 0;
+        }
+    }
+
+    void set_cass(const int* in) {
+        for (int i=0; i<G; i++) {
+            for (int j=0; j<K; j++) {
+                cass[i * G + j] = in[i * G + j];
+            }
+        }
+    }
+
+    int get_cass_for_group(const int g, const int k) {
+        return cass[g * G + k];
+    }
+
+    void increment_cass(const int g, const int k, const int val) {
+        cass[g * G + k] += val;
+    }
+
+
     void reset_m0() { std::fill(m0.begin(), m0.end(), 0); }
     void set_m0_for_group(const int group, const int val) { m0.at(group) = val; }
     int  get_m0_for_group(const int group) { return m0.at(group); }
-
-    void reset_cass() { for (int i=0; i<G; i++) cass[i].assign(K, 0); }
-    int  get_cass_for_group(const int group, const int k) { return cass[group][k]; }
-    void increment_cass(const int group, const int k, const int val) { cass[group][k] += val; }
     void   set_sigmag_for_group(const int group, const double val) { sigmag.at(group) = val; }
     double get_sigmag_for_group(const int group) { return sigmag.at(group); }
 
@@ -117,19 +143,19 @@ private:
     std::vector<double> acum;
     std::vector<int> comp;
     std::vector<double> beta_sqn;
-    std::vector<double> beta_sqn_sum;
     std::vector<int> m0;
     std::vector<std::vector<double>> pi_est;
-    std::vector<std::vector<int>> cass;
     std::vector<double> dirich;
     double* mave    = nullptr;
     double* msig    = nullptr;
-    double* epsilon = nullptr; // starts with centered normalized phenotype
+    double* epsilon = nullptr;
+    int*    cass    = nullptr;
     double epssum = 0.0;
     double sigmae = 0.0;
     std::vector<double> sigmag;
     double mu     = 0.0;
     void read_file(const Options& opt);
+
     friend class PhenMgr;
 };
 
@@ -141,7 +167,7 @@ public:
     PhenMgr(const Options& opt, const int N, const int M) {
         //std::cout << "+++Calling PhenMgr ctor" << std::endl; 
         read_phen_files(opt, N, M);
-        //std::cout << "---PhenMgr ctor done" << std::endl; 
+        std::cout << "---PhenMgr ctor done" << std::endl; 
     }
     //~PhenMgr() {
     //    std::cout << "/!\\ Calling PhenMgr dtor" << std::endl; 

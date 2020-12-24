@@ -13,16 +13,21 @@
 
 
 Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int M) :
-    filepath(fp), N(N), M(M), im4(N%4 == 0 ? N/4 : N/4+1),
+    filepath(fp),
+    N(N),
+    M(M),
+    im4(N%4 == 0 ? N/4 : N/4+1),
     K(opt.get_s().size() + 1),
     G(opt.get_ngroups()) {
-    //std::cout << ">>>>> calling Phenotype ctor on " << filepath << std::endl;
+
     mave = (double*) _mm_malloc(size_t(M) * sizeof(double), 64);
     check_malloc(mave, __LINE__, __FILE__);
     msig = (double*) _mm_malloc(size_t(M) * sizeof(double), 64);
     check_malloc(msig, __LINE__, __FILE__);
     epsilon = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 64);
     check_malloc(epsilon, __LINE__, __FILE__);
+    cass = (int*) _mm_malloc(G * K * sizeof(int), 64);
+    check_malloc(cass, __LINE__, __FILE__);
     
     betas.assign(M, 0.0);
     acum.assign(M, 0.0);
@@ -30,13 +35,10 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     denom.resize(K - 1);
     logl.resize(K);
     comp.assign(M, 0);
-    cass.resize(G);
-    for (int i=0 ; i<G; i++)
-        cass[i].assign(K, 0);
     beta_sqn.resize(G);
-    beta_sqn_sum.resize(G);
     m0.resize(G);
     sigmag.resize(G);
+
     dirich.clear();
     for (int i=0; i<K; i++) dirich.push_back(1.0);
 
@@ -44,29 +46,33 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
 }
 
 Phenotype::Phenotype(const Phenotype& rhs) :
+    dist(rhs.dist),
     filepath(rhs.filepath),
     nonas(rhs.nonas),
     nas(rhs.nas),
+    im4(rhs.im4),
+    N(rhs.N),
+    M(rhs.M),
+    G(rhs.G),
+    K(rhs.K),
     betas(rhs.betas),
     data(rhs.data),
-    midx(rhs.midx),
     mask4(rhs.mask4),
+    midx(rhs.midx),
     denom(rhs.denom),
     muk(rhs.muk),
     logl(rhs.logl),
     acum(rhs.acum),
-    pi_est(rhs.pi_est),
-    cass(rhs.cass),
     comp(rhs.comp),
-    im4(rhs.im4),
-    M(rhs.M),
-    N(rhs.N),
+    beta_sqn(rhs.beta_sqn),
+    m0(rhs.m0),
+    pi_est(rhs.pi_est),
+    dirich(rhs.dirich),
     epssum(rhs.epssum),
     sigmae(rhs.sigmae),
     sigmag(rhs.sigmag),
-    mu(rhs.mu),
-    dist(rhs.dist) {
-    //std::cout << "####callying Phenotype cpctor im4 = " << im4 << std::endl;
+    mu(rhs.mu) {
+    std::cout << "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n";
     epsilon = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 64);
     check_malloc(epsilon, __LINE__, __FILE__);
     for (int i=0; i<im4*4; i++)
@@ -79,21 +85,35 @@ Phenotype::Phenotype(const Phenotype& rhs) :
         mave[i] = rhs.mave[i];
         msig[i] = rhs.msig[i];
     }
-    //std::cout << "#--# Phenotype cpctor" << std::endl;
+
+    cass = (int*) _mm_malloc(size_t(K * G) * sizeof(int), 64);
+    check_malloc(cass, __LINE__, __FILE__);
+
+    /*
+    for (int i=0; i<G; i++) {
+        printf("cass %d\n", i);
+         for (int j=0; j<K; j++) {
+             cass[i * K + j] = rhs.cass[i * K + j];
+             printf("%d = %d | ", i*K+j, cass[i*K+j]);
+         }
+         printf("\n");
+    }
+    */
+
+    std::cout << "#--# Phenotype cpctor" << std::endl;
 }
 
 
-void Phenotype::update_pi_est_dirichlet(const int group) {
+void Phenotype::update_pi_est_dirichlet(const int g) {
     std::vector<double> tmp;
-    const int K = cass[group].size();
     double sum = 0.0;
     for (int i=0; i<K; i++) {
-        double val = dist.rgamma((double)cass[group][i] + dirich[i], 1.0);
-        set_pi_est(group, i, val);
+        double val = dist.rgamma((double)cass[g * G + i] + dirich[i], 1.0);
+        set_pi_est(g, i, val);
         sum += val;
     }
     for (int i=0; i<K; i++)
-        set_pi_est(group, i, get_pi_est(group, i) / sum);
+        set_pi_est(g, i, get_pi_est(g, i) / sum);
 }
 
 double Phenotype::epsilon_sumsqr() {
@@ -153,10 +173,11 @@ void Phenotype::shuffle_midx() {
     boost::range::random_shuffle(midx, generator);
 }
 
+// Add contributions to base epsilon
 void Phenotype::update_epsilon(const double* dbeta, const unsigned char* bed) {
 
     const double bs_ = dbeta[0] * dbeta[2]; // lambda = dbeta / marker_sig
-    //printf(" Phenotype::update_epsilon with dbeta = %20.15f, ave = %20.15f, bet/sig = %20.15f\n", dbeta[0], dbeta[1], bs_);
+    printf(" Phenotype::update_epsilon with dbeta = %20.15f, ave = %20.15f, bet/sig = %20.15f\n", dbeta[0], dbeta[1], bs_);
 
     __m256d mu = _mm256_set1_pd(-1.0 * dbeta[1]);
     __m256d bs = _mm256_set1_pd(bs_);
@@ -283,10 +304,13 @@ void PhenMgr::print_info() {
 
 void PhenMgr::read_phen_files(const Options& opt, const int N, const int M) {
     std::vector<std::string> phen_files = opt.get_phen_files();
+    int pi = 0;
     for (auto fp = phen_files.begin(); fp != phen_files.end(); ++fp) {
+        pi++;
         if (opt.verbosity_level(3))
-            std::cout << "Reading phenotype file: " << *fp << std::endl;
+            std::cout << "Reading phenotype file " << pi << ": " << *fp << std::endl;
         phens.emplace_back(*fp, opt, N, M);
+        std::cout << "emplace_back for pi " << pi << ": " << *fp << std::endl;
     }
 }
 
