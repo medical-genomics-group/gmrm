@@ -116,6 +116,14 @@ void Phenotype::update_pi_est_dirichlet(const int g) {
         set_pi_est(g, i, get_pi_est(g, i) / sum);
 }
 
+double Phenotype::epsilon_sum() {
+    double sum = 0.0;
+    for (int i=0; i<N; i++) {
+        sum += epsilon[i];
+    }
+    return sum;
+}
+
 double Phenotype::epsilon_sumsqr() {
     double sumsqr = 0.0;
     for (int i=0; i<N; i++) {
@@ -177,7 +185,7 @@ void Phenotype::shuffle_midx() {
 void Phenotype::update_epsilon(const double* dbeta, const unsigned char* bed) {
 
     const double bs_ = dbeta[0] * dbeta[2]; // lambda = dbeta / marker_sig
-    printf(" Phenotype::update_epsilon with dbeta = %20.15f, ave = %20.15f, bet/sig = %20.15f\n", dbeta[0], dbeta[1], bs_);
+    //printf(" Phenotype::update_epsilon with dbeta = %20.15f, ave = %20.15f, bet/sig = %20.15f\n", dbeta[0], dbeta[1], bs_);
 
     __m256d mu = _mm256_set1_pd(-1.0 * dbeta[1]);
     __m256d bs = _mm256_set1_pd(bs_);

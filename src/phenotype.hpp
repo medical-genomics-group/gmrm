@@ -80,6 +80,7 @@ public:
 
     void update_epsilon(const double* dbeta, const unsigned char* bed);
     double epsilon_sumsqr();
+    double epsilon_sum();
 
     void reset_beta_sqn_to_zero() {
         std::fill(beta_sqn.begin(), beta_sqn.end(), 0.0);
