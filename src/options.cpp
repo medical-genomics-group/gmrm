@@ -41,7 +41,18 @@ void Options::read_command_line_options(int argc, char** argv) {
                     exit(EXIT_FAILURE);
                 }
             }
-        } else if (!strcmp(argv[i], "--verbosity")) {
+        } 
+        else if (!strcmp(argv[i], "--group-index-file")) {
+            if (i == argc - 1) fail_if_last(argv, i);
+            group_index_file = argv[++i];
+            ss << "--group-index-file " << group_index_file << "\n";
+        }
+        else if (!strcmp(argv[i], "--group-mixture-file")) {
+            if (i == argc - 1) fail_if_last(argv, i);
+            group_mixture_file = argv[++i];
+            ss << "--group-mixture-file " << group_mixture_file << "\n";
+        }
+        else if (!strcmp(argv[i], "--verbosity")) {
             if (i == argc - 1) fail_if_last(argv, i);
             verbosity = atoi(argv[++i]);
             ss << "--verbosity " << verbosity << "\n";
@@ -116,25 +127,30 @@ void Options::fail_if_last(char** argv, const int i) {
 
 // Check for minimal setup: a bed file + a dim file + phen file(s)
 void Options::check_options() {
-    
-    std::cout << "will check passed options for completeness" << std::endl;
-    
     if (get_bed_file() == "") {
         std::cout << "FATAL  : no bed file provided! Please use the --bedfile option." << std::endl;
         exit(EXIT_FAILURE);
     }
-    std::cout << "  bed file: OK - " << get_bed_file() << "\n";
+    //std::cout << "  bed file: OK - " << get_bed_file() << "\n";
 
     if (get_dim_file() == "") {
         std::cout << "FATAL  : no dim file provided! Please use the --dimfile option." << std::endl;
         exit(EXIT_FAILURE);
     }
-    std::cout << "  dim file: OK - " << get_dim_file() << "\n";
+    //std::cout << "  dim file: OK - " << get_dim_file() << "\n";
 
     if (count_phen_files() == 0) {
         std::cout << "FATAL  : no phen file(s) provided! Please use the --phenfile option." << std::endl;
         exit(EXIT_FAILURE);
     }
-    std::cout << "  phen file(s): OK - " << count_phen_files() << " files passed.\n";
-    list_phen_files();
+    //std::cout << "  phen file(s): OK - " << count_phen_files() << " files passed.\n";
+    //list_phen_files();
+
+
+    // group index and mixture files: either both or none
+    if ( (group_index_file == "" && group_mixture_file != "") ||
+         (group_index_file != "" && group_mixture_file == ""))  {
+        std::cout << "FATAL  : you need to activate BOTH --group-index-file and --group-mixture-file" << std::endl;
+        exit(EXIT_FAILURE);
+    }
 }

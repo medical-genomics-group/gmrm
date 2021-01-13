@@ -68,6 +68,7 @@ public:
     void shuffle_markers();
     int  get_marker_group(const int mglob) { return 0; } //todo: adpat when groups are activated
     void update_epsilon(const int* counts, const double* dbetas, const unsigned char* recv_bed);
+    void check_openmp();
 
 private:
     const Options opt;
@@ -81,6 +82,7 @@ private:
     const int G = 0;
     
     std::vector<int> mtotgrp;
+    std::vector<int> groups;
     std::vector<std::vector<double>> cva;
     std::vector<std::vector<double>> cvai;
     std::vector<std::vector<double>> pi_prior;
@@ -95,6 +97,7 @@ private:
     void set_block_of_markers();
     void load_genotype();
     void check_processing_setup();
+    void read_group_file();
 };
 
 
