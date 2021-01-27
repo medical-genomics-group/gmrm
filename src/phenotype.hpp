@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <immintrin.h>
 #include "options.hpp"
 #include "distributions.hpp"
 //#include "utilities.hpp"

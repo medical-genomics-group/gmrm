@@ -254,14 +254,18 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
         double* msig = phen.get_msig();
 
         double start = MPI_Wtime();
-        
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif 
         for (int i=0; i<M; i++) {
             __m256d suma = _mm256_set1_pd(0.0);
             __m256d sumb = _mm256_set1_pd(0.0);
             __m256d luta, lutb, lutna;
+            size_t bedix = size_t(i) * size_t(mbytes);
+            const unsigned char* bedm = &bed[bedix];
             for (int j=0; j<mbytes; j++) {
-                luta  = _mm256_load_pd(&dotp_lut_a[bed[i*mbytes + j] * 4]);
-                lutb  = _mm256_load_pd(&dotp_lut_b[bed[i*mbytes + j] * 4]);
+                luta  = _mm256_load_pd(&dotp_lut_a[bedm[j] * 4]);
+                lutb  = _mm256_load_pd(&dotp_lut_b[bedm[j] * 4]);
                 lutna = _mm256_load_pd(&na_lut[mask4[j] * 4]);
                 luta  = _mm256_mul_pd(luta, lutna);
                 lutb  = _mm256_mul_pd(lutb, lutna);
@@ -275,8 +279,8 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
             __m256d vave = _mm256_set1_pd(-avg);
             __m256d sums = _mm256_set1_pd(0.0);
             for (int j=0; j<mbytes; j++) {
-                luta  = _mm256_load_pd(&dotp_lut_a[bed[i*mbytes + j] * 4]);
-                lutb  = _mm256_load_pd(&dotp_lut_b[bed[i*mbytes + j] * 4]);
+                luta  = _mm256_load_pd(&dotp_lut_a[bedm[j] * 4]);
+                lutb  = _mm256_load_pd(&dotp_lut_b[bedm[j] * 4]);
                 lutna = _mm256_load_pd(&na_lut[mask4[j] * 4]);
                 luta  = _mm256_add_pd(luta, vave);    // - mu
                 luta  = _mm256_mul_pd(luta, lutb);    // M -> 0.0
@@ -365,14 +369,19 @@ void Phenotype::read_file(const Options& opt) {
         infile.close();
 
         assert(nas + nonas == N);
-
         
         // Set last bits to 0 if ninds % 4 != 0
         const int m4 = line_n % 4;
         if (m4 != 0) {
-            std::cout << "Setting last " << m4 << " bits to NAs" << std::endl;
-            std::cout << "fatal: missing implementation" << std::endl;
-            exit(1);
+	  for (int i=m4; i<4; i++) {
+	    mask4.at(int(line_n / 4)) &= ~(0b1 << i);
+	  }
+	  //printf("line_n = %d\n", line_n);
+	  //printf("last byte starts for indiv %d\n", int(N/4)*4);
+	  //printf("set up to indiv %d\n", int(N/4 + 1) * 4);
+	  std::cout << "Setting last " << 4 - m4 << " bits to NAs" << std::endl;
+	  //std::cout << "fatal: missing implementation" << std::endl;
+	  //exit(1);
         }
         
         // Center and scale
