@@ -3,7 +3,6 @@
 SOURCEDIR = ./src
 BINDIR    = ./bin
 
-HEADERS  := $(wildcard $(SOURCEDIR)/*.hpp)
 SOURCES  := $(wildcard $(SOURCEDIR)/*.cpp)
 
 #SRC_EXCL  =  $(SOURCEDIR)/BayesRRm_mt.cpp
@@ -15,11 +14,8 @@ CXXFLAGS  = -Ofast
 CXXFLAGS += -g
 #CXXFLAGS += -H
 CXXFLAGS += -std=c++17
-CXXFLAGS += -lstdc++fs
-
 
 INCLUDE   = -I$(SOURCEDIR)
-INCLUDE  += -I$(EIGEN_ROOT)/include/eigen3
 INCLUDE  += -I$(BOOST_ROOT)/include
 
 ifeq ($(CXX),g++)
@@ -28,7 +24,8 @@ EXEC     ?= ardyh_g
 CXX       = mpic++
 BUILDDIR  = build_g
 CXXFLAGS += -fopenmp
-CXXFLAGS += -march=native
+CXXFLAGS += -march=skylake-avx512
+#CXXFLAGS += -march=native
 
 else ifeq ($(CXX),icpc)
 
@@ -44,31 +41,31 @@ else
 
 endif
 
-
 ifeq (, $(shell which $(CXX)))
 $(error "no $(CXX) in $(PATH), please load relevant modules.")
 endif
 
+OBJS	:= $(patsubst $(SOURCEDIR)/%.cpp, $(BUILDDIR)/%.o, $(SOURCES))
+DEPS	:= $(patsubst $(SOURCEDIR)/%.cpp, $(BUILDDIR)/%.d, $(SOURCES))
 
-OBJ      := $(patsubst $(SOURCEDIR)/%.cpp,$(BUILDDIR)/%.o,$(SOURCES))
+LIBS      = -lz
 
-LIBS      = -lz 
+all: create_path $(BINDIR)/$(EXEC)
 
-
-all: dir $(BINDIR)/$(EXEC)
-
-$(BINDIR)/$(EXEC): $(OBJ)
+$(BINDIR)/$(EXEC): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(LIBS) $^ -o $@
 
-$(OBJ): $(BUILDDIR)/%.o : $(SOURCEDIR)/%.cpp $(HEADERS)
-	$(CXX) $(CXXFLAGS) $(INCLUDE) -c $< -o $@
+$(BUILDDIR)/%.o: $(SOURCEDIR)/%.cpp Makefile
+	$(CXX) $(CXXFLAGS) $(INCLUDE) -MMD -MP -c $< -o $@
 
-dir:
+-include $(DEPS)
+
+create_path:
 	mkdir -p $(BUILDDIR)
 	mkdir -p $(BINDIR)
 
 clean:
-	rm -vf $(BUILDDIR)/*.o $(BINDIR)/$(EXEC)
+	rm -vf $(BUILDDIR)/*.o $(BUILDDIR)/*.d $(BINDIR)/$(EXEC)
 
 help:
 	@echo "Usage: make [ all | clean | help ]"
