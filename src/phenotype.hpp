@@ -111,10 +111,18 @@ public:
     int get_cass_for_group(const int g, const int k) {
         return cass[g * G + k];
     }
+    int get_cass_sum_for_group(const int g) {
+        int cass_sum = 0;
+        for (int i=0; i<G; i++) 
+            cass_sum += get_cass_for_group(g, i);
+        return cass_sum;
+    }
 
     void increment_cass(const int g, const int k, const int val) {
         cass[g * G + k] += val;
     }
+
+    void print_cass(const std::vector<int>& mtotgrp);
 
 
     void reset_m0() { std::fill(m0.begin(), m0.end(), 0); }
@@ -169,7 +177,7 @@ public:
     PhenMgr(const Options& opt, const int N, const int M) {
         //std::cout << "+++Calling PhenMgr ctor" << std::endl; 
         read_phen_files(opt, N, M);
-        std::cout << "---PhenMgr ctor done" << std::endl; 
+        //std::cout << "---PhenMgr ctor done" << std::endl; 
     }
     //~PhenMgr() {
     //    std::cout << "/!\\ Calling PhenMgr dtor" << std::endl; 

@@ -89,18 +89,17 @@ Phenotype::Phenotype(const Phenotype& rhs) :
     cass = (int*) _mm_malloc(size_t(K * G) * sizeof(int), 64);
     check_malloc(cass, __LINE__, __FILE__);
 
-    /*
-    for (int i=0; i<G; i++) {
-        printf("cass %d\n", i);
-         for (int j=0; j<K; j++) {
-             cass[i * K + j] = rhs.cass[i * K + j];
-             printf("%d = %d | ", i*K+j, cass[i*K+j]);
-         }
-         printf("\n");
-    }
-    */
-
     std::cout << "#--# Phenotype cpctor" << std::endl;
+}
+
+void Phenotype::print_cass(const std::vector<int>& mtotgrp) {
+    for (int i=0; i<G; i++) {
+        printf("cass for group mtotgrp[%3d] = %8d | cass: ", i, mtotgrp.at(i));
+        for (int j=0; j<K; j++) {
+            printf("%8d", cass[i*K+j]);
+        }
+        printf("\n");
+    }
 }
 
 
@@ -291,8 +290,8 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
             double sig = round_dp(1.0 / sqrt((sums[0] + sums[1] + sums[2] + sums[3]) / (double(phen.get_nonas()) - 1.0)));
             mave[i] = avg;
             msig[i] = sig;
-            if (i<10)
-                printf("marker %d: %20.15f +/- %20.15f\n", i, mave[i], msig[i]);
+            //if (i<10)
+            //    printf("marker %d: %20.15f +/- %20.15f, %20.15f / %20.15f\n", i, mave[i], msig[i], asum, bsum);
         }
         double end = MPI_Wtime();
         std::cout << "statistics took " << end - start << " seconds to run." << std::endl;
