@@ -21,11 +21,11 @@ public:
                                                         nranks(dims.get_nranks()),
                                                         N(dims.get_nt()),
                                                         Mt(dims.get_mt()),
-                                                        K(opt.get_s().size() + 1),
-                                                        G(opt.get_ngroups())  {
+                                                        K(opt.get_nmixtures()),
+                                                        G(opt.get_ngroups()),
+                                                        cva(opt.get_cva()), 
+                                                        cvai(opt.get_cvai()) {
 
-        cva.resize(G);
-        cvai.resize(G);
         pi_prior.resize(G);
         mtotgrp.resize(G);
 
@@ -33,23 +33,21 @@ public:
 
         for (int i=0 ; i<G; i++) {
             mtotgrp.at(i) = 0;
-            cva[i].resize(K, 0);
-            cvai[i].resize(K, 0);
             double sum_cva = 0.0;
             for (int j=0; j<K-1; j++) {
-                cva[i][j+1]  = opt.get_s().at(j);
-                cvai[i][j+1] = 1.0 / cva[i][j+1];
                 sum_cva += cva[i][j+1];
             }
-
             pi_prior[i].resize(K, 0.5);
             for (int j=1; j<K; j++) {
                 pi_prior[i][j] =  pi_prior[i][0] * cva[i][j] / sum_cva;
-                //printf("pi_prior[%d][%d] = %20.15f\n", i, j+1, pi_prior[i][j+1]);
             }
         }        
 
         setup_processing();
+        if (rank == 0) {
+            print_cva();
+            //print_cvai();
+        }
     }
 
     ~Bayes() {
@@ -66,9 +64,13 @@ public:
     int  get_Mm() { return Mm; } // Maximum number of markers per task (others may have M + 1)
     int  get_K()  { return K;  }
     void shuffle_markers();
-    int  get_marker_group(const int mglob) { return 0; } //todo: adpat when groups are activated
+    int  get_marker_group(const int mglob) { 
+        return group_index.at(mglob);
+    }
     void update_epsilon(const int* counts, const double* dbetas, const unsigned char* recv_bed);
     void check_openmp();
+    void print_cva();
+    void print_cvai();
 
 private:
     const Options opt;
@@ -82,9 +84,9 @@ private:
     const int G = 0;
     
     std::vector<int> mtotgrp;
-    std::vector<int> groups;
-    std::vector<std::vector<double>> cva;
-    std::vector<std::vector<double>> cvai;
+    std::vector<int> group_index;
+    const std::vector<std::vector<double>> cva;
+    const std::vector<std::vector<double>> cvai;
     std::vector<std::vector<double>> pi_prior;
 
     int S = 0;              // task marker start 
@@ -97,7 +99,7 @@ private:
     void set_block_of_markers();
     void load_genotype();
     void check_processing_setup();
-    void read_group_file();
+    void read_group_index_file(const std::string& file);
 };
 
 

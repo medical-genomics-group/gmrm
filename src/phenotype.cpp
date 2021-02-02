@@ -17,7 +17,7 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     N(N),
     M(M),
     im4(N%4 == 0 ? N/4 : N/4+1),
-    K(opt.get_s().size() + 1),
+    K(opt.get_nmixtures()),
     G(opt.get_ngroups()) {
 
     mave = (double*) _mm_malloc(size_t(M) * sizeof(double), 64);
@@ -45,6 +45,7 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     read_file(opt);
 }
 
+//copy ctor
 Phenotype::Phenotype(const Phenotype& rhs) :
     dist(rhs.dist),
     filepath(rhs.filepath),
@@ -72,7 +73,6 @@ Phenotype::Phenotype(const Phenotype& rhs) :
     sigmae(rhs.sigmae),
     sigmag(rhs.sigmag),
     mu(rhs.mu) {
-    std::cout << "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n";
     epsilon = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 64);
     check_malloc(epsilon, __LINE__, __FILE__);
     for (int i=0; i<im4*4; i++)
@@ -85,29 +85,37 @@ Phenotype::Phenotype(const Phenotype& rhs) :
         mave[i] = rhs.mave[i];
         msig[i] = rhs.msig[i];
     }
-
     cass = (int*) _mm_malloc(size_t(K * G) * sizeof(int), 64);
     check_malloc(cass, __LINE__, __FILE__);
-
-    std::cout << "#--# Phenotype cpctor" << std::endl;
 }
 
-void Phenotype::print_cass(const std::vector<int>& mtotgrp) {
+void Phenotype::print_cass() {
+    printf("INFO   : cass for phenotype [...]\n");
     for (int i=0; i<G; i++) {
-        printf("cass for group mtotgrp[%3d] = %8d | cass: ", i, mtotgrp.at(i));
+        printf("         %2d : ", i);
         for (int j=0; j<K; j++) {
-            printf("%8d", cass[i*K+j]);
+            printf("%7d", cass[i*K+j]);
         }
         printf("\n");
     }
 }
 
+void Phenotype::print_cass(const std::vector<int>& mtotgrp) {
+    printf("INFO   : cass for phenotype [...]\n");
+    for (int i=0; i<G; i++) {
+        printf("         group %2d: %7d | cass: ", i, mtotgrp.at(i));
+        for (int j=0; j<K; j++) {
+            printf("%7d", cass[i*K + j]);
+        }
+        printf("\n");
+    }
+}
 
 void Phenotype::update_pi_est_dirichlet(const int g) {
     std::vector<double> tmp;
     double sum = 0.0;
     for (int i=0; i<K; i++) {
-        double val = dist.rgamma((double)cass[g * G + i] + dirich[i], 1.0);
+        double val = dist.rgamma((double)cass[g * K + i] + dirich[i], 1.0);
         set_pi_est(g, i, val);
         sum += val;
     }
@@ -188,9 +196,12 @@ void Phenotype::update_epsilon(const double* dbeta, const unsigned char* bed) {
 
     __m256d mu = _mm256_set1_pd(-1.0 * dbeta[1]);
     __m256d bs = _mm256_set1_pd(bs_);
-
     __m256d eps4, deps4, lutna, luta, lutb;
-    
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif                              
+
     for (int i=0; i<im4; i++) {
         eps4  = _mm256_load_pd(&epsilon[i*4]);
         lutna = _mm256_load_pd(&na_lut[mask4[i] * 4]);
@@ -207,6 +218,9 @@ void Phenotype::update_epsilon(const double* dbeta, const unsigned char* bed) {
 // Assume all operations to be masked, so don't care about
 // potential extra individuals from last byte of bed
 void Phenotype::offset_epsilon(const double offset) {
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif
     for (int i=0; i<im4*4; i++)
         epsilon[i] += offset;
 }
@@ -214,19 +228,26 @@ void Phenotype::offset_epsilon(const double offset) {
 void Phenotype::update_epsilon_sum() {
     __m256d eps4, sig4, lutna;
     __m256d sums = _mm256_set1_pd(0.0);
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) reduction(addpd4:sums)
+#endif
     for (int i=0; i<im4; i++) {
         eps4  = _mm256_load_pd(&epsilon[i*4]);
         lutna = _mm256_load_pd(&na_lut[mask4[i] * 4]);
         eps4  = _mm256_mul_pd(eps4, lutna);
         sums  = _mm256_add_pd(sums, eps4);
     }
-    epssum = round_dp(sums[0] + sums[1] + sums[2] + sums[3]);
+    epssum = sums[0] + sums[1] + sums[2] + sums[3];
 }
 
 // Only depends on NAs 
 void Phenotype::update_epsilon_sigma() {
     __m256d eps4, sig4, lutna;
     __m256d sume = _mm256_set1_pd(0.0);
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) reduction(addpd4:sume)
+#endif
     for (int i=0; i<im4; i++) {
         eps4  = _mm256_load_pd(&epsilon[i*4]);
         lutna = _mm256_load_pd(&na_lut[mask4[i] * 4]);
@@ -234,7 +255,7 @@ void Phenotype::update_epsilon_sigma() {
         sig4  = _mm256_mul_pd(eps4, eps4);
         sume  = _mm256_add_pd(sume, sig4);
     }
-    sigmae = round_dp((sume[0] + sume[1] + sume[2] + sume[3]) / double(nonas) * 0.5);
+    sigmae = (sume[0] + sume[1] + sume[2] + sume[3]) / double(nonas) * 0.5;
 }
 
 
@@ -244,15 +265,20 @@ void Phenotype::update_epsilon_sigma() {
 // ! one byte of phen contains information for 8 individuals
 void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, const int M, const int mbytes) {
 
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
     for (auto& phen : get_phens()) {
 
-        phen.print_info();
+        if (rank == 0)
+            phen.print_info();
+
         const std::vector<unsigned char> mask4 = phen.get_mask4();
 
         double* mave = phen.get_mave();
         double* msig = phen.get_msig();
 
-        double start = MPI_Wtime();
+        //double start = MPI_Wtime();
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif 
@@ -293,13 +319,12 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
             //if (i<10)
             //    printf("marker %d: %20.15f +/- %20.15f, %20.15f / %20.15f\n", i, mave[i], msig[i], asum, bsum);
         }
-        double end = MPI_Wtime();
-        std::cout << "statistics took " << end - start << " seconds to run." << std::endl;
+        //double end = MPI_Wtime();
+        //std::cout << "statistics took " << end - start << " seconds to run." << std::endl;
     }
 }
 
 void PhenMgr::display_markers_statistics(const int n) {
-    
     for (auto& phen : get_phens()) {
         phen.print_info();
         for (int i=0; i<n; i++) {
@@ -321,7 +346,7 @@ void PhenMgr::read_phen_files(const Options& opt, const int N, const int M) {
         if (opt.verbosity_level(3))
             std::cout << "Reading phenotype file " << pi << ": " << *fp << std::endl;
         phens.emplace_back(*fp, opt, N, M);
-        std::cout << "emplace_back for pi " << pi << ": " << *fp << std::endl;
+        //std::cout << "emplace_back for pi " << pi << ": " << *fp << std::endl;
     }
 }
 
@@ -372,15 +397,15 @@ void Phenotype::read_file(const Options& opt) {
         // Set last bits to 0 if ninds % 4 != 0
         const int m4 = line_n % 4;
         if (m4 != 0) {
-	  for (int i=m4; i<4; i++) {
-	    mask4.at(int(line_n / 4)) &= ~(0b1 << i);
-	  }
-	  //printf("line_n = %d\n", line_n);
-	  //printf("last byte starts for indiv %d\n", int(N/4)*4);
-	  //printf("set up to indiv %d\n", int(N/4 + 1) * 4);
-	  std::cout << "Setting last " << 4 - m4 << " bits to NAs" << std::endl;
-	  //std::cout << "fatal: missing implementation" << std::endl;
-	  //exit(1);
+            for (int i=m4; i<4; i++) {
+                mask4.at(int(line_n / 4)) &= ~(0b1 << i);
+            }
+            //printf("line_n = %d\n", line_n);
+            //printf("last byte starts for indiv %d\n", int(N/4)*4);
+            //printf("set up to indiv %d\n", int(N/4 + 1) * 4);
+            std::cout << "Setting last " << 4 - m4 << " bits to NAs" << std::endl;
+            //std::cout << "fatal: missing implementation" << std::endl;
+            //exit(1);
         }
         
         // Center and scale

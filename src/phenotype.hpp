@@ -40,7 +40,7 @@ public:
     double* get_mave()        { return mave; }
     double* get_msig()        { return msig; }
     double* get_epsilon()     { return epsilon; }
-    double  get_epssum()      { return epssum; }
+    double  get_epsilon_sum() { return epssum; }
     double  get_sigmae()      { return sigmae; }
     void    set_sigmae(const double val) { sigmae = val; }
     std::vector<double>* get_sigmag()    { return &sigmag; }
@@ -62,12 +62,12 @@ public:
 
     unsigned int get_random_int() { return dist.get_random_number(); }
         
-    void set_pi_est(const std::vector<std::vector<double>> val) { pi_est = val; }
+    void   set_pi_est(const std::vector<std::vector<double>> val) { pi_est = val; }
     void   set_pi_est(const int group, const int k, const double val) { pi_est[group][k] = val; }
     double get_pi_est(const int group, const int k) { return pi_est[group][k]; }
 
     //void set_sigmag(const double val) { sigmag = val; }
-    void set_mu(const double val) { mu = val; }
+    void   set_mu(const double val) { mu = val; }
 
     void   set_marker_acum(const int idx, const double val) { acum[idx] = val; } 
     double get_marker_acum(const int idx) { return acum[idx]; } 
@@ -79,7 +79,7 @@ public:
     double get_marker_ave(const int idx) { return mave[idx]; }
     double get_marker_sig(const int idx) { return msig[idx]; }
 
-    void update_epsilon(const double* dbeta, const unsigned char* bed);
+    void   update_epsilon(const double* dbeta, const unsigned char* bed);
     double epsilon_sumsqr();
     double epsilon_sum();
 
@@ -90,38 +90,46 @@ public:
     double get_beta_sqn_for_group(const int group) { return beta_sqn.at(group); }
     std::vector<double>* get_beta_sqn ()     { return &beta_sqn; }
 
+    double get_sigmag_sum() {
+        double sum = 0.0;
+        for (int i=0; i<G; i++)
+            sum += get_sigmag_for_group(i);
+        return sum;
+    }
+
     void set_beta_sqn(const double* in) {
-        for (int i=0; i<G; i++)  beta_sqn[i] = in[i];
+        for (int i=0; i<G; i++)
+            beta_sqn[i] = in[i];
     }
 
     void reset_cass() {
-        for (int i=0; i<G*K; i++) {
+        for (int i=0; i<G*K; i++)
             cass[i] = 0;
-        }
     }
 
     void set_cass(const int* in) {
         for (int i=0; i<G; i++) {
             for (int j=0; j<K; j++) {
-                cass[i * G + j] = in[i * G + j];
+                cass[i * K + j] = in[i * K + j];
             }
         }
     }
 
     int get_cass_for_group(const int g, const int k) {
-        return cass[g * G + k];
+        return cass[g * K + k];
     }
     int get_cass_sum_for_group(const int g) {
         int cass_sum = 0;
-        for (int i=0; i<G; i++) 
+        for (int i=0; i<K; i++) 
             cass_sum += get_cass_for_group(g, i);
         return cass_sum;
     }
 
     void increment_cass(const int g, const int k, const int val) {
-        cass[g * G + k] += val;
+        cass[g * K + k] += val;
     }
 
+    void print_cass();
     void print_cass(const std::vector<int>& mtotgrp);
 
 
