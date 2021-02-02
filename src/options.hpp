@@ -9,6 +9,7 @@ public:
     Options(int argc, char** argv) {
         read_command_line_options(argc, argv);
         check_options();
+        read_group_mixture_file();
     }
     void read_command_line_options(int argc, char** argv);
     std::string get_bed_file() const { return bed_file; }
@@ -25,7 +26,10 @@ public:
     unsigned int get_iterations() const { return iterations; }
     unsigned int get_truncm() const { return truncm; }
     const std::vector<double>& get_s() const { return S; }
-    const int& get_ngroups() const { return ngroups; } 
+    int get_ngroups()   const { return ngroups; } 
+    int get_nmixtures() const { return nmixtures; }
+    const std::vector<std::vector<double>>& get_cva()  const { return cva;  }
+    const std::vector<std::vector<double>>& get_cvai() const { return cvai; }
 
 private:
     std::string bed_file = "";
@@ -39,7 +43,12 @@ private:
     unsigned int truncm = 0;
     std::vector<std::string> phen_files;
     std::vector<double> S;
-    int ngroups = 1;
+    int ngroups = -1;
+    void _set_ngroups(const int i) { ngroups = i; }
+    int nmixtures = -1;
+    void _set_nmixtures(const int i) { nmixtures = i; }
     void check_options();
     void fail_if_last(char** argv, const int i);
+    void read_group_mixture_file();
+    std::vector<std::vector<double>> cva, cvai;
 };

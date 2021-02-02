@@ -4,6 +4,9 @@
 #include <iostream>
 #include <fstream>
 #include <cassert>
+#include <regex>
+#include <mpi.h>
+#include <boost/algorithm/string/trim.hpp>
 #include "options.hpp"
 
 // Function to parse command line options
@@ -14,18 +17,18 @@ void Options::read_command_line_options(int argc, char** argv) {
 
     for (int i=1; i<argc; ++i) {
 
-        if (!strcmp(argv[i], "--bedfile")) {
+        if (!strcmp(argv[i], "--bed-file")) {
             if (i == argc - 1) fail_if_last(argv, i);
             bed_file = argv[++i];
-            ss << "--bedfile " << bed_file << "\n";
+            ss << "--bed-file " << bed_file << "\n";
         }
-        else if (!strcmp(argv[i], "--dimfile")) {
+        else if (!strcmp(argv[i], "--dim-file")) {
             if (i == argc - 1) fail_if_last(argv, i);
             dim_file = argv[++i];
-            ss << "--dimfile " << dim_file << "\n";
+            ss << "--dim-file " << dim_file << "\n";
         }
         // List of phenotype files to read; comma separated if more than one.
-        else if (!strcmp(argv[i], "--phenfiles")) {
+        else if (!strcmp(argv[i], "--phen-files")) {
             if (i == argc - 1) fail_if_last(argv, i);
             std::string cslist = argv[++i];
             ss << "--phenfiles " << cslist << "\n";
@@ -152,5 +155,71 @@ void Options::check_options() {
          (group_index_file != "" && group_mixture_file == ""))  {
         std::cout << "FATAL  : you need to activate BOTH --group-index-file and --group-mixture-file" << std::endl;
         exit(EXIT_FAILURE);
+    }
+}
+
+void Options::read_group_mixture_file() {
+
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    std::fstream fs;
+    fs.open(group_mixture_file, std::ios::in);
+
+    int ngroups0 = -1;
+    int groupi   =  0;
+    std::vector<std::vector<std::string>> mixtures;
+
+    if (fs.is_open()) {
+        if (rank == 0)
+            std::cout << "INFO   : Reading group mixtures from [" + group_mixture_file + "]." << std::endl;
+        std::string mixture_line;
+        std::regex ws_re("\\s+");
+        while(getline(fs, mixture_line)) {
+            //std::cout << "::: " << mixture_line << "\n";
+            boost::algorithm::trim(mixture_line);
+            if (mixture_line.length() == 0)  continue;
+            std::vector<std::string> one_group_mixtures { 
+                std::sregex_token_iterator(mixture_line.begin(), mixture_line.end(), ws_re, -1), {} 
+            };
+            int ngroups = one_group_mixtures.size();
+            if (ngroups0 < 0) ngroups0 = ngroups;
+            if (ngroups != ngroups0) {
+                printf("FATAL  : check your mixture file. The same number of mixtures is expected for all groups.\n");
+                printf("       : got %d mixtures for group %d, while first group had %d.\n", ngroups, groupi, ngroups0);
+                exit(1);
+            }
+            //std::cout << "found " << ngroups << ", first el is >>" << one_group_mixtures.at(0)<< "<<" << std::endl;
+            mixtures.push_back(one_group_mixtures);
+            groupi++;
+        }
+        fs.close();
+    } else {
+        printf("FATAL  : can not open the mixture file %s. Use the --group-mixture-file option!\n", group_mixture_file.c_str());
+        exit(1);
+    }
+
+    _set_ngroups(groupi);
+    _set_nmixtures(ngroups0);
+
+    cva.resize(ngroups);
+    cvai.resize(ngroups);
+    for (int i = 0; i < ngroups; i++) {
+        cva[i].resize(nmixtures);
+        cvai[i].resize(nmixtures);
+        for (int j=0; j<nmixtures; j++) {
+            cva[i][j]  = stod(mixtures[i][j]);
+            if (j == 0 && cva[i][j] != 0.0) {
+                printf("FATAL  : First element of group mixture must be 0.0! Check your input file %s.\n", group_mixture_file.c_str());
+                exit(1);
+            }            
+            if (j > 0) {
+                if (cva[i][j] <= cva[i][j-1]) {
+                    printf("FATAL  : Mixtures must be given in ascending order! Check your input file %s.\n", group_mixture_file.c_str());
+                    exit(1);
+                }
+                cvai[i][j] = 1.0 / cva[i][j];
+            }
+        }
     }
 }
