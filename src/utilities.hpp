@@ -1,6 +1,7 @@
 #pragma once
 #include <assert.h>
 #include <cmath>
+#include <immintrin.h>
 
 
 void check_malloc(const void* ptr, const int linenumber, const char* filename);
@@ -10,6 +11,12 @@ void check_mpi(const int error, const int linenumber, const char* filename);
 int check_int_overflow(const size_t n, const int linenumber, const char* filename);
 
 double round_dp(double in);
+
+//EO: this to allow reduction on avx256 pd4 datatype with OpenMP
+#pragma omp declare reduction \
+    (addpd4:__m256d:omp_out+=omp_in) \
+    initializer(omp_priv=_mm256_setzero_pd())
+
 
 // MPI_File_read_at_all handling count argument larger than INT_MAX
 //
