@@ -70,6 +70,8 @@ void Bayes::process() {
 
         double dbetas[NPHEN * 3]; // [ dbeta:mave:msig | ... | ]
 
+        double t_it_sync = 0.0;
+
         for (int mrki=0; mrki<Mm; mrki++) {
 
             bool share_mrk = false;             
@@ -192,6 +194,9 @@ void Bayes::process() {
                 }
             }
 
+            //MPI_Barrier(MPI_COMM_WORLD);
+            double ts_sync = MPI_Wtime();
+
             // Collect information on which tasks need to share a marker;
             // Tasks with M < Mm, share_mrk is false by default.
             MPI_Allgather(&share_mrk,  1, MPI_C_BOOL,
@@ -220,22 +225,16 @@ void Bayes::process() {
             MPI_Allgatherv(&dbetas, share_mrk ? NPHEN * 3 : 0, MPI_DOUBLE,
                            recv_dbetas, cnt_bet, dis_bet, MPI_DOUBLE, MPI_COMM_WORLD);
             
-            unsigned char* recv_bed = (unsigned char*) _mm_malloc(disp_bed, 64);
+            unsigned char* recv_bed = (unsigned char*) _mm_malloc(disp_bed, 32);
             check_malloc(recv_bed, __LINE__, __FILE__);
             MPI_Allgatherv(&bed_data[mloc * mbytes], share_mrk ? mbytes : 0, MPI_UNSIGNED_CHAR,
                            recv_bed, cnt_bed, dis_bed, MPI_UNSIGNED_CHAR, MPI_COMM_WORLD);
             
             update_epsilon(cnt_bet, recv_dbetas, recv_bed);
-
-            //int pheni = 0;
-            //for (auto& phen : pmgr.get_phens()) {
-            //    double e_sqn = phen.epsilon_sumsqr();
-            //    double e_sum = phen.epsilon_sum();
-            //    printf("?AFT i:%d r:%d p:%d  e_sum = %20.15f, e_sqn = %20.15f\n", it, rank, pheni, e_sum, e_sqn);
-            //    pheni++;
-            //}
             
             MPI_Barrier(MPI_COMM_WORLD);
+            double te_sync = MPI_Wtime();
+            t_it_sync += te_sync - ts_sync;
             
             _mm_free(recv_bed);
             
@@ -336,7 +335,7 @@ void Bayes::process() {
         
         double te_it = MPI_Wtime();
         if (rank == 0)
-            printf("RESULT : Iteration %d took %7.3f sec\n", it, te_it - ts_it);
+            printf("RESULT : It %d  total proc time = %7.3f sec, with sync time = %7.3f\n", it, te_it - ts_it, t_it_sync);
 
     } // End iteration loop
 }
@@ -354,11 +353,12 @@ void Bayes::update_epsilon(const int* counts, const double* dbetas, const unsign
         //printf("r:%d  cnt = %d\n", i, cnt);
         if (cnt == 0) continue;        
         assert(cnt == NPHEN * 3);
-        //printf(" cnt > 0: task %d, get for rank %d cnt = %d dbetas:", rank, i, cnt);
+        //printf(" cnt > 0: task %d, get for rank %d cnt = %d dbetas:\n", rank, i, cnt);
         int pheni = 0;
         for (auto& phen : pmgr.get_phens()) {
             //printf(" - %20.15f\n", dbetas[cnt_tot + pheni * 3]);
-            phen.update_epsilon(&dbetas[cnt_tot + pheni * 3], &bed[bedi * mbytes]);
+            if (dbetas[cnt_tot + pheni * 3] != 0.0)
+                phen.update_epsilon(&dbetas[cnt_tot + pheni * 3], &bed[bedi * mbytes]);
             //phen.update_epsilon_sum();
             //printf(" - r:%d p:%d   epssum = %.17g, cnt_tot = %d\n", i, pheni, phen.get_epsilon_sum(), cnt_tot);
             pheni += 1;
@@ -368,32 +368,68 @@ void Bayes::update_epsilon(const int* counts, const double* dbetas, const unsign
     }
 }
 
-
-double Bayes::dot_product(const int mloc, double* phen, const double mu, const double sigma_inv) {
+// EO, review!!
+double Bayes::dot_product(const int mloc, double* __restrict__ phen, const double mu, const double sigma_inv) {
 
     unsigned char* bed = &bed_data[mloc * mbytes];
 
+#ifdef MANVEC
     __m256d luta, lutb; //, lutna;
+    __m512d lutab, p42;
     __m256d p4   = _mm256_set1_pd(0.0);
     __m256d suma = _mm256_set1_pd(0.0);
     __m256d sumb = _mm256_set1_pd(0.0);
+    __m512d sum42 = _mm512_set1_pd(0.0);
 
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static) reduction(addpd4:suma,sumb)
+    //#pragma omp parallel for schedule(static) reduction(addpd4:suma,sumb)
+#pragma omp parallel for schedule(static) reduction(addpd8:sum42)
 #endif                              
     for (int j=0; j<mbytes; j++) {
-        luta  = _mm256_load_pd(&dotp_lut_a[bed[j] * 4]);
-        lutb  = _mm256_load_pd(&dotp_lut_b[bed[j] * 4]);
-        p4    = _mm256_load_pd(&phen[j * 4]);
+        //luta  = _mm256_load_pd(&dotp_lut_a[bed[j] * 4]);
+        //lutb  = _mm256_load_pd(&dotp_lut_b[bed[j] * 4]);
+        //luta  = _mm256_load_pd(&dotp_lut_ab[bed[j] * 8]);
+        //lutb  = _mm256_load_pd(&dotp_lut_ab[bed[j] * 8 + 4]);
+        lutab = _mm512_load_pd(&dotp_lut_ab[bed[j] * 8]);
+        //p4    = _mm256_load_pd(&phen[j * 4]);
+        p42 = _mm512_broadcast_f64x4(_mm256_load_pd(&phen[j * 4]));
         ////lutna = _mm256_load_pd(&na_lut[mask4[j] * 4]); // phen = 0.0 on NAs!
-        luta  = _mm256_mul_pd(luta, p4);
-        lutb  = _mm256_mul_pd(lutb, p4);
-        suma  = _mm256_add_pd(suma, luta);
-        sumb  = _mm256_add_pd(sumb, lutb);
+        //luta  = _mm256_mul_pd(luta, p4);
+        //lutb  = _mm256_mul_pd(lutb, p4);
+        p42 = _mm512_mul_pd(p42, lutab);
+        //suma  = _mm256_add_pd(suma, luta);
+        //sumb  = _mm256_add_pd(sumb, lutb);
+        sum42 = _mm512_add_pd(sum42, p42);
     }
 
+    //return sigma_inv * 
+    //    (suma[0] + suma[1] + suma[2] + suma[3] - mu * (sumb[0] + sumb[1] + sumb[2] + sumb[3]));
     return sigma_inv * 
-        (suma[0] + suma[1] + suma[2] + suma[3] - mu * (sumb[0] + sumb[1] + sumb[2] + sumb[3]));
+        (sum42[0] + sum42[1] + sum42[2] + sum42[3] - mu * (sum42[4] + sum42[5] + sum42[6] + sum42[7]));
+
+#else
+
+    double dpa = 0.0;
+    double dpb = 0.0;
+
+#ifdef _OPENMP
+    //#pragma omp parallel for schedule(static) reduction(addpd4:suma,sumb)
+#pragma omp parallel for schedule(static) reduction(+:dpa,dpb)
+#endif                              
+    for (int i=0; i<mbytes; i++) {
+#ifdef _OPENMP
+#pragma omp simd aligned(dotp_lut_a,dotp_lut_b,phen:32)
+#endif
+        for (int j=0; j<4; j++) {
+            dpa += dotp_lut_a[bed[i] * 4 + j] * phen[i * 4 + j];
+            dpb += dotp_lut_b[bed[i] * 4 + j] * phen[i * 4 + j];
+        }
+    }
+
+    return sigma_inv * (dpa - mu * dpb);
+
+#endif
+
 }
 
 
@@ -440,7 +476,7 @@ void Bayes::check_openmp() {
         }
     }
 #else
-    printf("INFO   : no OpenMP!\n");
+    printf("WARNING: no OpenMP support!\n");
 #endif
 }
 

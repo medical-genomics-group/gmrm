@@ -20,13 +20,13 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     K(opt.get_nmixtures()),
     G(opt.get_ngroups()) {
 
-    mave = (double*) _mm_malloc(size_t(M) * sizeof(double), 64);
+    mave = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
     check_malloc(mave, __LINE__, __FILE__);
-    msig = (double*) _mm_malloc(size_t(M) * sizeof(double), 64);
+    msig = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
     check_malloc(msig, __LINE__, __FILE__);
-    epsilon = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 64);
-    check_malloc(epsilon, __LINE__, __FILE__);
-    cass = (int*) _mm_malloc(G * K * sizeof(int), 64);
+    epsilon_ = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+    check_malloc(epsilon_, __LINE__, __FILE__);
+    cass = (int*) _mm_malloc(G * K * sizeof(int), 32);
     check_malloc(cass, __LINE__, __FILE__);
     
     betas.assign(M, 0.0);
@@ -70,22 +70,22 @@ Phenotype::Phenotype(const Phenotype& rhs) :
     pi_est(rhs.pi_est),
     dirich(rhs.dirich),
     epssum(rhs.epssum),
-    sigmae(rhs.sigmae),
+    sigmae_(rhs.sigmae_),
     sigmag(rhs.sigmag),
     mu(rhs.mu) {
-    epsilon = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 64);
-    check_malloc(epsilon, __LINE__, __FILE__);
+    epsilon_ = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+    check_malloc(epsilon_, __LINE__, __FILE__);
     for (int i=0; i<im4*4; i++)
-        epsilon[i] = rhs.epsilon[i];
-    mave = (double*) _mm_malloc(size_t(M) * sizeof(double), 64);
+        epsilon_[i] = rhs.epsilon_[i];
+    mave = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
     check_malloc(mave, __LINE__, __FILE__);
-    msig = (double*) _mm_malloc(size_t(M) * sizeof(double), 64);
+    msig = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
     check_malloc(msig, __LINE__, __FILE__);
     for (int i=0; i<M; i++) {
         mave[i] = rhs.mave[i];
         msig[i] = rhs.msig[i];
     }
-    cass = (int*) _mm_malloc(size_t(K * G) * sizeof(int), 64);
+    cass = (int*) _mm_malloc(size_t(K * G) * sizeof(int), 32);
     check_malloc(cass, __LINE__, __FILE__);
 }
 
@@ -124,7 +124,9 @@ void Phenotype::update_pi_est_dirichlet(const int g) {
 }
 
 double Phenotype::epsilon_sum() {
+    double* epsilon = get_epsilon();
     double sum = 0.0;
+#pragma omp parallel for simd aligned(epsilon:32) reduction(+:sum)
     for (int i=0; i<N; i++) {
         sum += epsilon[i];
     }
@@ -132,7 +134,9 @@ double Phenotype::epsilon_sum() {
 }
 
 double Phenotype::epsilon_sumsqr() {
+    double* epsilon = get_epsilon();
     double sumsqr = 0.0;
+#pragma omp parallel for simd aligned(epsilon:32) reduction(+:sumsqr)
     for (int i=0; i<N; i++) {
         sumsqr += epsilon[i] * epsilon[i];
     }
@@ -156,8 +160,8 @@ double Phenotype::sample_norm_rng(const double a, const double b) {
 }
 
 double Phenotype::sample_norm_rng() {
-    //printf("sampling mu with epssum = %20.15f and sigmae = %20.15f; nonas = %d\n", epssum, sigmae, nonas);
-    return dist.norm_rng(epssum / double(nonas), sigmae / double(nonas));
+    //printf("sampling mu with epssum = %20.15f and sigmae = %20.15f; nonas = %d\n", epssum, sigmae, nonas);    
+    return dist.norm_rng(epssum / double(nonas), get_sigmae() / double(nonas));
 }
 
 double Phenotype::sample_beta_rng(const double a, const double b) {
@@ -192,16 +196,37 @@ void Phenotype::shuffle_midx() {
 void Phenotype::update_epsilon(const double* dbeta, const unsigned char* bed) {
 
     const double bs_ = dbeta[0] * dbeta[2]; // lambda = dbeta / marker_sig
+    const double mdb = -dbeta[1];
     //printf(" Phenotype::update_epsilon with dbeta = %20.15f, ave = %20.15f, bet/sig = %20.15f\n", dbeta[0], dbeta[1], bs_);
 
-    __m256d mu = _mm256_set1_pd(-1.0 * dbeta[1]);
-    __m256d bs = _mm256_set1_pd(bs_);
-    __m256d eps4, deps4, lutna, luta, lutb;
+    double* epsilon = get_epsilon();
 
+#ifdef MANVECT
+    const __m256d mu = _mm256_set1_pd(-1.0 * dbeta[1]);
+    const __m256d bs = _mm256_set1_pd(bs_);
+#ifdef __INTEL_COMPILER
+    __assume_aligned(epsilon, 32);
+    __assume_aligned(&na_lut, 32);
+    __assume_aligned(&dotp_lut_a, 32);
+    __assume_aligned(&dotp_lut_b, 32);
+#endif
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
 #endif                              
-
+    for (int i=0; i<im4; i++) {
+        __m256d luta  = _mm256_load_pd(&dotp_lut_ab[bed[i] * 8]);
+        __m256d lutb  = _mm256_load_pd(&dotp_lut_ab[bed[i] * 8 + 4]);
+        __m256d tmp1  = _mm256_fmadd_pd(mu, lutb, luta);
+        __m256d lutna = _mm256_load_pd(&na_lut[mask4[i] * 4]);
+        __m256d tmp2  = _mm256_mul_pd(bs, tmp1);
+        __m256d eps4  = _mm256_load_pd(&epsilon[i*4]);
+        __m256d tmp3  = _mm256_fmadd_pd(lutna, tmp2, eps4);
+        _mm256_store_pd(&epsilon[i*4], tmp3);
+    }
+/*
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif                              
     for (int i=0; i<im4; i++) {
         eps4  = _mm256_load_pd(&epsilon[i*4]);
         lutna = _mm256_load_pd(&na_lut[mask4[i] * 4]);
@@ -213,18 +238,49 @@ void Phenotype::update_epsilon(const double* dbeta, const unsigned char* bed) {
         eps4  = _mm256_add_pd(eps4, deps4);
         _mm256_store_pd(&epsilon[i*4], eps4);
     }
-}
+*/
 
-// Assume all operations to be masked, so don't care about
-// potential extra individuals from last byte of bed
-void Phenotype::offset_epsilon(const double offset) {
+#else
+
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static)
+#pragma omp parallel for
 #endif
-    for (int i=0; i<im4*4; i++)
-        epsilon[i] += offset;
+    for (int i=0; i<im4; i++) {
+        const int bedi = bed[i] * 4;
+        const int masi = mask4[i] * 4;
+#ifdef _OPENMP
+#pragma omp simd aligned(epsilon, dotp_lut_a, dotp_lut_b, na_lut : 32) simdlen(4)
+#endif
+        for (int j=0; j<4; j++) {
+            double a = dotp_lut_a[bedi + j];
+            double b = dotp_lut_b[bedi + j];
+            double m = na_lut[masi + j];
+            epsilon[i*4 + j] += (mdb * b + a) * bs_ * m;
+        }
+    }
+
+#endif
 }
 
+void Phenotype::offset_epsilon(const double offset) {
+    
+    double* epsilon = get_epsilon();
+    
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+    for (int i=0; i<im4; i++) {
+        const int masi = mask4[i] * 4;
+#ifdef _OPENMP
+#pragma omp simd aligned(epsilon, na_lut : 32) simdlen(4)
+#endif
+        for (int j=0; j<4; j++) {
+            epsilon[i*4 + j] += offset * na_lut[masi + j];
+        }
+    }
+}
+
+/*
 void Phenotype::update_epsilon_sum() {
     __m256d eps4, sig4, lutna;
     __m256d sums = _mm256_set1_pd(0.0);
@@ -240,22 +296,36 @@ void Phenotype::update_epsilon_sum() {
     }
     epssum = sums[0] + sums[1] + sums[2] + sums[3];
 }
+*/
 
 // Only depends on NAs 
 void Phenotype::update_epsilon_sigma() {
-    __m256d eps4, sig4, lutna;
+    double* epsilon = get_epsilon();
+#ifdef MANVECT
     __m256d sume = _mm256_set1_pd(0.0);
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static) reduction(addpd4:sume)
 #endif
     for (int i=0; i<im4; i++) {
-        eps4  = _mm256_load_pd(&epsilon[i*4]);
-        lutna = _mm256_load_pd(&na_lut[mask4[i] * 4]);
+        __m256d eps4  = _mm256_load_pd(&epsilon[i*4]);
+        __m256d lutna = _mm256_load_pd(&na_lut[mask4[i] * 4]);
         eps4  = _mm256_mul_pd(eps4, lutna);
-        sig4  = _mm256_mul_pd(eps4, eps4);
-        sume  = _mm256_add_pd(sume, sig4);
+        eps4  = _mm256_mul_pd(eps4, eps4);
+        sume  = _mm256_add_pd(sume, eps4);
     }
-    sigmae = (sume[0] + sume[1] + sume[2] + sume[3]) / double(nonas) * 0.5;
+    set_sigmae((sume[0] + sume[1] + sume[2] + sume[3]) / double(nonas) * 0.5);
+#else
+    double sigmae = 0.0;
+#ifdef _OPENMP
+#pragma omp parallel for simd reduction(+:sigmae)
+#endif
+    for (int i=0; i<im4; i++) {
+        for (int j=0; j<4; j++) {
+            sigmae += epsilon[i*4 + j] * epsilon[i*4 + j] * na_lut[mask4[i] * 4 + j];
+        }
+    }
+    set_sigmae(sigmae / double(nonas) * 0.5);
+#endif
 }
 
 
@@ -274,11 +344,13 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
             phen.print_info();
 
         const std::vector<unsigned char> mask4 = phen.get_mask4();
+        const int im4 = phen.get_im4();
 
         double* mave = phen.get_mave();
         double* msig = phen.get_msig();
 
         //double start = MPI_Wtime();
+#ifdef MANVECT
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif 
@@ -299,7 +371,7 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
             }
             double asum = suma[0] + suma[1] + suma[2] + suma[3];
             double bsum = sumb[0] + sumb[1] + sumb[2] + sumb[3];
-            double avg  = round_dp(asum / bsum);
+            double avg  = asum / bsum;
 
             __m256d vave = _mm256_set1_pd(-avg);
             __m256d sums = _mm256_set1_pd(0.0);
@@ -313,12 +385,36 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
                 luta  = _mm256_mul_pd(luta, luta);    // ^2
                 sums  = _mm256_add_pd(sums, luta);    // sum
             }
-            double sig = round_dp(1.0 / sqrt((sums[0] + sums[1] + sums[2] + sums[3]) / (double(phen.get_nonas()) - 1.0)));
+            double sig = 1.0 / sqrt((sums[0] + sums[1] + sums[2] + sums[3]) / (double(phen.get_nonas()) - 1.0));
             mave[i] = avg;
             msig[i] = sig;
             //if (i<10)
             //    printf("marker %d: %20.15f +/- %20.15f, %20.15f / %20.15f\n", i, mave[i], msig[i], asum, bsum);
         }
+#else
+        for (int i=0; i<M; i++) {
+            size_t bedix = size_t(i) * size_t(mbytes);
+            const unsigned char* bedm = &bed[bedix];
+            double suma = 0.0;
+            double sumb = 0.0;
+            for (int j=0; j<im4; j++) {
+                for (int k=0; k<4; k++) {
+                    suma += dotp_lut_a[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k];
+                    sumb += dotp_lut_b[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k];
+                }
+            }
+            mave[i] = suma / sumb;
+            double sumsqr = 0.0;
+            for (int j=0; j<im4; j++) {
+                for (int k=0; k<4; k++) {
+                    double val = (dotp_lut_a[bedm[j] * 4 + k] - mave[i]) * dotp_lut_b[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k];
+                    sumsqr += val * val;
+                }
+            }
+            msig[i] = 1.0 / sqrt(sumsqr / (double(phen.get_nonas()) - 1.0));
+        }
+
+#endif
         //double end = MPI_Wtime();
         //std::cout << "statistics took " << end - start << " seconds to run." << std::endl;
     }
@@ -359,6 +455,7 @@ void Phenotype::read_file(const Options& opt) {
     std::string line;
     std::regex re("\\s+");
 
+    double* epsilon = get_epsilon();
     double sum = 0.0;
 
     if (infile.is_open()) {

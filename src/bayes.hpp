@@ -56,7 +56,7 @@ public:
     }
 
     void process();
-    double dot_product(const int mloc, double* phen, const double mu, const double sigma);
+    double dot_product(const int mloc, double* __restrict__ phen, const double mu, const double sigma);
     void list_phen_files() const { opt.list_phen_files(); }
     int  get_N()  { return N;  } // Invariant over tasks
     int  get_M()  { return M; } // Number of markers processed by task

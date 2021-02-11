@@ -18,14 +18,19 @@ CXXFLAGS += -std=c++17
 INCLUDE   = -I$(SOURCEDIR)
 INCLUDE  += -I$(BOOST_ROOT)/include
 
+#CXXFLAGS += -DMANVECT
+
 ifeq ($(CXX),g++)
 
 EXEC     ?= ardyh_g
 CXX       = mpic++
 BUILDDIR  = build_g
 CXXFLAGS += -fopenmp
-CXXFLAGS += -march=skylake-avx512
-#CXXFLAGS += -march=native
+#CXXFLAGS += -march=native -mfma
+#CXXFLAGS += -mavx2 -mfma
+CXXFLAGS += -march=skylake-avx512 -mfma
+CXXFLAGS += -fopt-info-vec-missed=gcc_vec_missed.txt
+#CXXFLAGS += -fopt-info-vec=gcc_vec_ok.txt
 
 else ifeq ($(CXX),icpc)
 
@@ -35,7 +40,7 @@ BUILDDIR  = build_i
 CXXFLAGS += -qopenmp
 CXXFLAGS += -xCORE-AVX512 -qopt-zmm-usage=high
 #CXXFLAGS += -xCORE-AVX2, -axCORE-AVX512 -qopt-zmm-usage=high
-
+CXXFLAGS += -qopt-report=2 -qopt-report-phase=vec
 else
 	@echo "Neither GCC nor Intel compiler available." 1>&2 && false
 

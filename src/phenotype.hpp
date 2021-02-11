@@ -19,7 +19,7 @@ public:
         //std::cout << "\\\\\\ calling Phenotype dtor" << std::endl;
         if (mave    != nullptr)  _mm_free(mave);
         if (msig    != nullptr)  _mm_free(msig);
-        if (epsilon != nullptr)  _mm_free(epsilon);
+        if (epsilon_ != nullptr)  _mm_free(epsilon_);
         if (cass    != nullptr)  _mm_free(cass);
     }
     std::string get_filepath() const { return filepath; }
@@ -34,20 +34,20 @@ public:
     std::vector<std::vector<double>>&  get_pi_est() { return pi_est; }
     int* get_cass()     { return cass; }
 
-    
+    int     get_im4()   const { return im4; }
     int     get_nas()   const { return nas; }
     int     get_nonas() const { return nonas; }
     double* get_mave()        { return mave; }
     double* get_msig()        { return msig; }
-    double* get_epsilon()     { return epsilon; }
+    double* get_epsilon()     { return epsilon_; }
     double  get_epsilon_sum() { return epssum; }
-    double  get_sigmae()      { return sigmae; }
-    void    set_sigmae(const double val) { sigmae = val; }
+    double  get_sigmae()      { return sigmae_; }
+    void    set_sigmae(const double val) { sigmae_ = val; }
     std::vector<double>* get_sigmag()    { return &sigmag; }
     double  get_mu()          { return mu; }
 
     void offset_epsilon(const double);
-    void update_epsilon_sum();
+    //void update_epsilon_sum();
     void update_epsilon_sigma();
 
     void set_rng(const unsigned int);
@@ -164,12 +164,12 @@ private:
     std::vector<int> m0;
     std::vector<std::vector<double>> pi_est;
     std::vector<double> dirich;
-    double* mave    = nullptr;
-    double* msig    = nullptr;
-    double* epsilon = nullptr;
-    int*    cass    = nullptr;
+    double* mave     = nullptr;
+    double* msig     = nullptr;
+    double* epsilon_ = nullptr;
+    int*    cass     = nullptr;
     double epssum = 0.0;
-    double sigmae = 0.0;
+    double sigmae_ = 0.0;
     std::vector<double> sigmag;
     double mu     = 0.0;
     void read_file(const Options& opt);

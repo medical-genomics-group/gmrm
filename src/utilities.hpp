@@ -17,6 +17,10 @@ double round_dp(double in);
     (addpd4:__m256d:omp_out+=omp_in) \
     initializer(omp_priv=_mm256_setzero_pd())
 
+#pragma omp declare reduction \
+    (addpd8:__m512d:omp_out+=omp_in) \
+    initializer(omp_priv=_mm512_setzero_pd())
+
 
 // MPI_File_read_at_all handling count argument larger than INT_MAX
 //
