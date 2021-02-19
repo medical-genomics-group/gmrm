@@ -52,7 +52,7 @@ public:
     void set_prng_m(const unsigned int);
     void set_prng_d(const unsigned int);
     void set_midx();
-    void shuffle_midx();
+    void shuffle_midx(const bool mimic_hydra);
     double sample_norm_rng();
     double sample_norm_rng(const double a, const double b);
     double sample_beta_rng();

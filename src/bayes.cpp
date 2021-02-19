@@ -60,7 +60,7 @@ void Bayes::process() {
             
             // Shuffling of the markers on its own PRNG (see README/wiki)
             if (opt.shuffle_markers())
-                phen.shuffle_midx();
+                phen.shuffle_midx(opt.mimic_hydra());
             
             phen.reset_m0();
             phen.reset_cass();
@@ -453,7 +453,11 @@ void Bayes::setup_processing() {
 
     for (auto& phen : pmgr.get_phens()) {
         phen.set_prng_m((unsigned int)(opt.get_seed() + (rank + 0)));
-        phen.set_prng_d((unsigned int)(opt.get_seed() + (rank + 1) * 1000));
+        if (opt.mimic_hydra()) {
+            phen.set_prng_d((unsigned int)(opt.get_seed() + (rank + 0) * 1000));
+        } else {
+            phen.set_prng_d((unsigned int)(opt.get_seed() + (rank + 1) * 1000));
+        }
     }
 
     read_group_index_file(opt.get_group_index_file());

@@ -65,6 +65,10 @@ void Options::read_command_line_options(int argc, char** argv) {
             shuffle = (bool) atoi(argv[++i]);
             ss << "--shuffle-markers " << shuffle << "\n";
 
+        } else if (!strcmp(argv[i], "--mimic-hydra")) {
+            mimic_hydra_ = true;
+            ss << "--mimic_hydra " << mimic_hydra_ << "\n";
+
         } else if (!strcmp(argv[i], "--seed")) {
             if (i == argc - 1) fail_if_last(argv, i);
             if (atoi(argv[i + 1]) < 0) {
@@ -154,6 +158,11 @@ void Options::check_options() {
     if ( (group_index_file == "" && group_mixture_file != "") ||
          (group_index_file != "" && group_mixture_file == ""))  {
         std::cout << "FATAL  : you need to activate BOTH --group-index-file and --group-mixture-file" << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    if (mimic_hydra_ && count_phen_files() > 1) {
+        std::cout << "FATAL  : with --mimic-hydra, only a single phenotype can be processed." << std::endl;
         exit(EXIT_FAILURE);
     }
 }

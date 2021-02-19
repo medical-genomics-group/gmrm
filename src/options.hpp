@@ -22,6 +22,7 @@ public:
     int  get_verbosity() const { return verbosity; }
     bool verbosity_level(const int level) const { return level > get_verbosity() ? false : true; }
     bool shuffle_markers() const { return shuffle; }
+    bool mimic_hydra() const { return mimic_hydra_; }
     unsigned int get_seed() const { return seed; }
     unsigned int get_iterations() const { return iterations; }
     unsigned int get_truncm() const { return truncm; }
@@ -38,6 +39,7 @@ private:
     std::string group_mixture_file = "";
     int verbosity = 0;
     bool shuffle = true;
+    bool mimic_hydra_ = false;
     unsigned int seed = 0;
     unsigned int iterations = 1;
     unsigned int truncm = 0;

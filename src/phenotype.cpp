@@ -195,10 +195,15 @@ void Phenotype::set_midx() {
         midx.push_back(i);
 }
 
-void Phenotype::shuffle_midx() {
+void Phenotype::shuffle_midx(const bool mimic_hydra) {
     boost::uniform_int<> unii(0, M-1);
-    boost::variate_generator< boost::mt19937&, boost::uniform_int<> > generator(dist_m.get_rng(), unii);
-    boost::range::random_shuffle(midx, generator);
+    if (mimic_hydra) {
+        boost::variate_generator< boost::mt19937&, boost::uniform_int<> > generator(dist_d.get_rng(), unii);
+        boost::range::random_shuffle(midx, generator);
+    } else {
+        boost::variate_generator< boost::mt19937&, boost::uniform_int<> > generator(dist_m.get_rng(), unii);
+        boost::range::random_shuffle(midx, generator);
+    }
 }
 
 // Add contributions to base epsilon
