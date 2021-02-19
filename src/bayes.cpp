@@ -58,15 +58,14 @@ void Bayes::process() {
             phen.offset_epsilon(-phen.get_mu());
             //**BUG in original phen.epsilon_stats();
             
-            // Important that all phens to the shuffling of the
-            // index array of markers midx to keep consistency of their prng
+            // Shuffling of the markers on its own PRNG (see README/wiki)
             if (opt.shuffle_markers())
                 phen.shuffle_midx();
-            //for (int i=0; i<10; i++)
-            //    printf("it %4d  midx[%7d] = %7d\n", it, i, phen.get_midx()[i]);
+            
             phen.reset_m0();
             phen.reset_cass();
         }
+        fflush(stdout);
 
         double dbetas[NPHEN * 3]; // [ dbeta:mave:msig | ... | ]
 
@@ -89,7 +88,7 @@ void Bayes::process() {
                 int pheni = -1;
 
                 for (auto& phen : pmgr.get_phens()) {
-
+                    
                     pheni += 1;
 
                     // Adav
@@ -105,7 +104,7 @@ void Bayes::process() {
                     double inv2sige = 1.0 / (2.0 * phen.get_sigmae());
                     //if (mrki < 3)
                     //    printf("mrk = %3d has beta = %20.15f; sige_g = %20.15f = %20.15f / %20.15f\n", mloc, phen.get_marker_beta(mloc), sige_g, phen.get_sigmae(), phen.get_sigmag());
-                    
+
                     std::vector<double> denom = phen.get_denom();
                     std::vector<double> muk   = phen.get_muk();
                     std::vector<double> logl  = phen.get_logl();
@@ -123,7 +122,6 @@ void Bayes::process() {
                     num += beta * double(phen.get_nonas() - 1);
                     
                     //printf("i:%d r:%d m:%d: num = %.17g, %20.15f, %20.15f\n", it, rank, mloc, num, phen.get_marker_ave(mloc), phen.get_marker_sig(mloc));
-                    //continue;
 
                     for (int i=1; i<=K-1; ++i)
                         muk.at(i) = num / denom.at(i - 1);
@@ -158,7 +156,7 @@ void Bayes::process() {
                             } else {
                                 phen.set_marker_beta(mloc, phen.sample_norm_rng(muk[i], phen.get_sigmae() / denom[i-1]));
                                 //printf("@B@ i:%4d r:%4d m:%4d:  dbetat = %20.15f, muk[%4d] = %15.10f with prob=%15.10f <= acum = %15.10f, denom = %15.10f, sigmaE = %15.10f: beta = %15.10f\n", it, rank, mloc, phen.get_marker_beta(mloc) - dbeta, i, muk[i], prob, phen.get_marker_acum(mloc), denom[i-1], phen.get_sigmae(), phen.get_marker_beta(mloc));
-                                fflush(stdout);
+                                //fflush(stdout);
                             }
                             phen.increment_cass(mgrp, i, 1);
                             //std::cout << "cass " << mgrp << " " << i << " = " << phen.get_cass_for_group(mgrp,i) << std::endl;
@@ -178,7 +176,7 @@ void Bayes::process() {
                             }
                         }
                     }
-                
+
                     dbeta -= phen.get_marker_beta(mloc);
                     dbetas[pheni * 3 + 0] = dbeta;
                     dbetas[pheni * 3 + 1] = phen.get_marker_ave(mloc);
@@ -253,8 +251,9 @@ void Bayes::process() {
             for (int i=0; i<M; i++) {
                 phen.increment_beta_sqn(get_marker_group(S + i), phen.get_marker_beta(i) * phen.get_marker_beta(i));
             }
+
             //for (int i=0; i<G; i++)
-            //    printf("iteration %d, rank %d: beta_sqn[%d] = %20.15f\n", it, rank, i, phen.get_beta_sqn_for_group(i));
+            //    printf("i:%d r:%d p:%d g:%d: beta_sqn[%d] = %20.15f\n", it, rank, pheni, i, i, phen.get_beta_sqn_for_group(i));
 
             double* beta_sqn_sum = (double*) malloc(G * sizeof(double));
             check_mpi(MPI_Allreduce(phen.get_beta_sqn()->data(),
@@ -276,10 +275,12 @@ void Bayes::process() {
 
             // Update global parameters
             //
+            
             for (int i=0; i<G; i++) {               
 
                 // Skip empty groups
-                if (mtotgrp.at(i) == 0)  continue;
+                if (mtotgrp.at(i) == 0)
+                    continue;
 
                 //printf(" !!! i:%d r:%d p:%d g:%d:  OLD sigmag = %20.15f\n", it, rank, pheni, i, phen.get_sigmag_for_group(i));
 
@@ -290,7 +291,6 @@ void Bayes::process() {
 
                 // Skip groups with m0 being null or empty cass (adaV in action)
                 if (phen.get_m0_for_group(i) == 0 || phen.get_cass_sum_for_group(i) == 0) {
-                    //printf(" ??? sigmaG for group %d set to 0.0!!!\n", i);
                     phen.set_sigmag_for_group(i, 0.0);
                     continue;
                 }
@@ -301,8 +301,10 @@ void Bayes::process() {
                 phen.update_pi_est_dirichlet(i);
             }
 
-            if (rank == 0)
-                phen.print_cass(mtotgrp);
+            //continue;
+
+            //if (rank == 0)
+            //    phen.print_cass(mtotgrp);
 
 
             // Broadcast sigmaG of rank 0
@@ -448,11 +450,10 @@ void Bayes::setup_processing() {
     double te = MPI_Wtime();
     if (rank == 0)
         printf("INFO   : Time to compute the markers' statistics: %.2f seconds.\n", te - ts);
-        
-    // All phenotypes get the same seed, and will sollicitate their own PRN
-    // generator exactly the same way, so that the PRNG state is consistent
+
     for (auto& phen : pmgr.get_phens()) {
-        phen.set_rng((unsigned int)(opt.get_seed() + rank*1000));
+        phen.set_prng_m((unsigned int)(opt.get_seed() + (rank + 0)));
+        phen.set_prng_d((unsigned int)(opt.get_seed() + (rank + 1) * 1000));
     }
 
     read_group_index_file(opt.get_group_index_file());

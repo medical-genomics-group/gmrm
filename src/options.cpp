@@ -113,7 +113,7 @@ void Options::read_command_line_options(int argc, char** argv) {
         }
     }
 
-    std::cout << ss.str() << std::endl;
+    //std::cout << ss.str() << std::endl;
 }
 
 void Options::list_phen_files() const {

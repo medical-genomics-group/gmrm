@@ -47,7 +47,8 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
 
 //copy ctor
 Phenotype::Phenotype(const Phenotype& rhs) :
-    dist(rhs.dist),
+    dist_m(rhs.dist_m),
+    dist_d(rhs.dist_d),
     filepath(rhs.filepath),
     nonas(rhs.nonas),
     nas(rhs.nas),
@@ -115,7 +116,7 @@ void Phenotype::update_pi_est_dirichlet(const int g) {
     std::vector<double> tmp;
     double sum = 0.0;
     for (int i=0; i<K; i++) {
-        double val = dist.rgamma((double)cass[g * K + i] + dirich[i], 1.0);
+        double val = dist_d.rgamma((double)cass[g * K + i] + dirich[i], 1.0);
         set_pi_est(g, i, val);
         sum += val;
     }
@@ -152,32 +153,40 @@ int Phenotype::get_marker_local_index(const int shuff_idx) {
 }
 
 double Phenotype::sample_inv_scaled_chisq_rng(const double a, const double b) {
-    return dist.inv_scaled_chisq_rng(a, b);
+    return dist_d.inv_scaled_chisq_rng(a, b);
 }
 
 double Phenotype::sample_norm_rng(const double a, const double b) {
-    return dist.norm_rng(a, b);
+    return dist_d.norm_rng(a, b);
 }
 
 double Phenotype::sample_norm_rng() {
     //printf("sampling mu with epssum = %20.15f and sigmae = %20.15f; nonas = %d\n", epssum, sigmae, nonas);    
-    return dist.norm_rng(epssum / double(nonas), get_sigmae() / double(nonas));
+    return dist_d.norm_rng(epssum / double(nonas), get_sigmae() / double(nonas));
 }
 
 double Phenotype::sample_beta_rng(const double a, const double b) {
-    return dist.beta_rng(a, b);
+    return dist_d.beta_rng(a, b);
 }
 
 double Phenotype::sample_unif_rng() {
-    return dist.unif_rng();
+    return dist_d.unif_rng();
+}
+
+void Phenotype::sample_for_free(const int n) {
+    for (int i=0; i<n; i++)
+        double fake = dist_d.unif_rng();
 }
 
 //void Phenotype::sample_sigmag_beta_rng() {
 //    sigmag = dist.beta_rng(epssum / double(nonas), sigmae / double(nonas));
 //}
 
-void Phenotype::set_rng(const unsigned int seed) {
-    dist.set_rng(seed);
+void Phenotype::set_prng_m(const unsigned int seed) {
+    dist_m.set_prng(seed);
+}
+void Phenotype::set_prng_d(const unsigned int seed) {
+    dist_d.set_prng(seed);
 }
 
 void Phenotype::set_midx() {
@@ -188,7 +197,7 @@ void Phenotype::set_midx() {
 
 void Phenotype::shuffle_midx() {
     boost::uniform_int<> unii(0, M-1);
-    boost::variate_generator< boost::mt19937&, boost::uniform_int<> > generator(dist.get_rng(), unii);
+    boost::variate_generator< boost::mt19937&, boost::uniform_int<> > generator(dist_m.get_rng(), unii);
     boost::range::random_shuffle(midx, generator);
 }
 

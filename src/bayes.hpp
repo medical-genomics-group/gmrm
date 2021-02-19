@@ -45,7 +45,7 @@ public:
 
         setup_processing();
         if (rank == 0) {
-            print_cva();
+            //print_cva();
             //print_cvai();
         }
     }

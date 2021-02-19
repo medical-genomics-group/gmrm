@@ -5,7 +5,6 @@
 #include <immintrin.h>
 #include "options.hpp"
 #include "distributions.hpp"
-//#include "utilities.hpp"
 
 
 class Phenotype {
@@ -50,7 +49,8 @@ public:
     //void update_epsilon_sum();
     void update_epsilon_sigma();
 
-    void set_rng(const unsigned int);
+    void set_prng_m(const unsigned int);
+    void set_prng_d(const unsigned int);
     void set_midx();
     void shuffle_midx();
     double sample_norm_rng();
@@ -59,8 +59,9 @@ public:
     double sample_beta_rng(const double a, const double b);
     double sample_unif_rng();
     double sample_inv_scaled_chisq_rng(const double a, const double b);
+    void   sample_for_free(const int n);
 
-    unsigned int get_random_int() { return dist.get_random_number(); }
+    unsigned int get_random_int() { return dist_d.get_random_number(); }
         
     void   set_pi_est(const std::vector<std::vector<double>> val) { pi_est = val; }
     void   set_pi_est(const int group, const int k, const double val) { pi_est[group][k] = val; }
@@ -142,7 +143,8 @@ public:
     void update_pi_est_dirichlet(const int group);
 
 private:
-    Distributions dist;
+    Distributions dist_m; // for shuffling the markers
+    Distributions dist_d; // for sampling the distributions
     std::string filepath;
     int nonas = 0;
     int nas   = 0;

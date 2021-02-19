@@ -4,9 +4,12 @@
 
 class Distributions {
 
+private:
+    boost::mt19937 rng;
+
 public:
 
-    void set_rng(unsigned int seed) {
+    void set_prng(unsigned int seed) {
         rng = boost::mt19937(seed);
     }
 
@@ -29,7 +32,8 @@ public:
     double rgamma(const double a, const double b) {
         boost::random::gamma_distribution<double> myGamma(a, b);
         boost::random::variate_generator<boost::mt19937&, boost::random::gamma_distribution<> > rand_gamma(rng, myGamma);
-        return rand_gamma();
+        double val = rand_gamma();
+        return val;
     }
 
     double beta_rng(const double a, const double b) {
@@ -54,9 +58,6 @@ public:
         return real_variate_generator();
     }
 
-
-private:
-    boost::mt19937 rng;
 };
 
 
