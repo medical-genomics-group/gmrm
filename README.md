@@ -19,7 +19,7 @@ make
 or
 
 ```
-module load gcc mvapich boost
+module load gcc mvapich2 boost
 make
 ```
 
@@ -45,6 +45,8 @@ srun $ardyh/bin/ardyh_g \
 --bed-file /path/to/file.bed \
 --dim-file /path/to/file.dim \
 --phen-files /path/to/phen1.phen,/path/to/phen2.phen \
+--group-index-file /path/to/file.gri \
+--group-mixture-file /path/to/file.grm \
 --shuffle-markers 1 \
 --seed 12345 \
 --iterations 10 \
