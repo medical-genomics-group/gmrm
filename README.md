@@ -39,7 +39,7 @@ Assuming Slurm as job scheduler, create a file `sbatch_ardyh.sh` along these lin
 #SBATCH --memory 10G
 #SBATCH --time 01:00:00
 
-module load gcc mvapich boost
+module load gcc mvapich2 boost
 
 srun $ardyh/bin/ardyh_g \
 --bed-file /path/to/file.bed \
