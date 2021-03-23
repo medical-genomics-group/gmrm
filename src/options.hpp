@@ -16,6 +16,8 @@ public:
     std::string get_dim_file() const { return dim_file; }
     std::string get_group_index_file() const { return group_index_file; }
     std::string get_group_mixture_file() const { return group_mixture_file; }
+    std::string get_out_dir() const { return out_dir; }
+    unsigned get_output_thin_rate() const { return thin; }
     const std::vector<std::string>& get_phen_files() const { return phen_files; }
     void list_phen_files() const;
     int  count_phen_files() const { return phen_files.size(); }
@@ -31,18 +33,20 @@ public:
     int get_nmixtures() const { return nmixtures; }
     const std::vector<std::vector<double>>& get_cva()  const { return cva;  }
     const std::vector<std::vector<double>>& get_cvai() const { return cvai; }
-
+    
 private:
     std::string bed_file = "";
     std::string dim_file = "";
     std::string group_index_file   = "";
     std::string group_mixture_file = "";
+    std::string out_dir = "";
     int verbosity = 0;
     bool shuffle = true;
     bool mimic_hydra_ = false;
     unsigned int seed = 0;
     unsigned int iterations = 1;
     unsigned int truncm = 0;
+    unsigned int thin = 1;
     std::vector<std::string> phen_files;
     std::vector<double> S;
     int ngroups = -1;

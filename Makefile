@@ -53,12 +53,12 @@ endif
 OBJS	:= $(patsubst $(SOURCEDIR)/%.cpp, $(BUILDDIR)/%.o, $(SOURCES))
 DEPS	:= $(patsubst $(SOURCEDIR)/%.cpp, $(BUILDDIR)/%.d, $(SOURCES))
 
-LIBS      = -lz
+LIBS      = -lz  -lstdc++fs
 
 all: create_path $(BINDIR)/$(EXEC)
 
 $(BINDIR)/$(EXEC): $(OBJS)
-	$(CXX) $(CXXFLAGS) $(LIBS) $^ -o $@
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
 
 $(BUILDDIR)/%.o: $(SOURCEDIR)/%.cpp Makefile
 	$(CXX) $(CXXFLAGS) $(INCLUDE) -MMD -MP -c $< -o $@

@@ -8,13 +8,16 @@
 #include "bayes.hpp"
 #include "utilities.hpp"
 #include "dotp_lut.hpp"
+#include "xfiles.hpp"
 
 
 void Bayes::process() {
 
     check_openmp();
-    
+
     for (auto& phen : pmgr.get_phens()) {
+        phen.delete_output_files();
+        phen.open_output_files();
         phen.set_midx();
         for (int i=0; i<opt.get_ngroups(); i++) {
             phen.set_sigmag_for_group(i, phen.sample_beta_rng(1.0, 1.0));
@@ -28,13 +31,7 @@ void Bayes::process() {
     }
 
     const int NPHEN =  pmgr.get_phens().size();
-    const int UPDR  = 3; // Update every 3 markers for now; --option to come...
-    MPI_Request req_update[UPDR];
-    MPI_Request req_dbetas[UPDR];
-    MPI_Status  req_status[UPDR];
-    bool send_update[nranks];
-    bool recv_update[nranks]; //* UPDR];
-
+    bool recv_update[nranks];
 
     for (unsigned int it = 1; it <= opt.get_iterations(); it++) {
 
@@ -108,8 +105,6 @@ void Bayes::process() {
                     std::vector<double> denom = phen.get_denom();
                     std::vector<double> muk   = phen.get_muk();
                     std::vector<double> logl  = phen.get_logl();
-                    std::vector<int> comp     = phen.get_comp();
-                    std::vector<std::vector<double>> pi_est = phen.get_pi_est();
 
                     for (int i=1; i<=K-1; ++i) {
                         denom.at(i-1) = (double)(N - 1) + sige_g * cvai[mgrp][i];
@@ -127,7 +122,7 @@ void Bayes::process() {
                         muk.at(i) = num / denom.at(i - 1);
 
                     for (int i=0; i<K; i++) {
-                        logl[i] = log(pi_est[mgrp][i]);
+                        logl[i] = log(phen.get_pi_est(mgrp, i));
                         if (i>0) 
                             logl[i] += -0.5 * log(sigg_e * double(phen.get_nonas() - 1) * cva[mgrp][i] + 1.0) + muk[i] * num * inv2sige;
                         //printf("logl[%d] = %20.15f\n", i, logl[i]);
@@ -160,7 +155,7 @@ void Bayes::process() {
                             }
                             phen.increment_cass(mgrp, i, 1);
                             //std::cout << "cass " << mgrp << " " << i << " = " << phen.get_cass_for_group(mgrp,i) << std::endl;
-                            comp[mloc] = i;
+                            phen.set_comp(mloc, i);
                             break;
                         } else {
                             bool zero_inc = false;
@@ -178,13 +173,14 @@ void Bayes::process() {
                     }
 
                     dbeta -= phen.get_marker_beta(mloc);
-                    dbetas[pheni * 3 + 0] = dbeta;
-                    dbetas[pheni * 3 + 1] = phen.get_marker_ave(mloc);
-                    dbetas[pheni * 3 + 2] = phen.get_marker_sig(mloc);
+
                     //printf("iteration %3d, rank %3d, marker %5d: dbeta = %20.15f, pheni = %d, %20.15f %20.15f\n", it, rank, mloc, dbeta, pheni, dbetas[pheni + 1], dbetas[pheni + 2]);
 
                     if (abs(dbeta) > 0.0) {
                         share_mrk = true;
+                        dbetas[pheni * 3 + 0] = dbeta;
+                        dbetas[pheni * 3 + 1] = phen.get_marker_ave(mloc);
+                        dbetas[pheni * 3 + 2] = phen.get_marker_sig(mloc);
                         //printf("@¢@ i:%3d r:%3d m:%5d: dbeta = %20.15f, pheni = %d, %20.15f %20.15f\n", it, rank, mloc, dbeta, pheni, dbetas[pheni * 3 + 1], dbetas[pheni * 3 + 2]);
                     } else {
                         //printf("-¢- i:%3d r:%3d m:%5d: dbeta = %20.15f, pheni = %d, %20.15f %20.15f\n", it, rank, mloc, dbeta, pheni, dbetas[pheni * 3 + 1], dbetas[pheni * 3 + 2]);
@@ -192,15 +188,28 @@ void Bayes::process() {
                 }
             }
 
-            //MPI_Barrier(MPI_COMM_WORLD);
+            MPI_Barrier(MPI_COMM_WORLD);
             double ts_sync = MPI_Wtime();
 
-            // Collect information on which tasks need to share a marker;
+            // Collect information on which tasks need to share its just processed marker;
             // Tasks with M < Mm, share_mrk is false by default.
             MPI_Allgather(&share_mrk,  1, MPI_C_BOOL,
                           recv_update, 1, MPI_C_BOOL,
                           MPI_COMM_WORLD);
-            
+
+            /*
+            if (rank == 0) {
+                printf("rank:share mrk %d?: ", mrki);
+                for (int i=0; i<nranks; i++) {
+                    printf("%d:%d ", i, recv_update[i] == true ? 1:0);
+                }
+                printf("\n");
+            }
+            fflush(stdout);
+            */
+
+            int totbytes = 0;
+
             int dis_bet[nranks], cnt_bet[nranks];
             int dis_bed[nranks], cnt_bed[nranks];
             int disp_bet = 0, disp_bed = 0;
@@ -208,6 +217,7 @@ void Bayes::process() {
                 if (recv_update[i]) {
                     cnt_bet[i] = NPHEN * 3;
                     cnt_bed[i] = mbytes;
+                    totbytes += mbytes;
                 } else {
                     cnt_bet[i] = 0;
                     cnt_bed[i] = 0;
@@ -219,6 +229,8 @@ void Bayes::process() {
                 disp_bed += cnt_bed[i];
             }
             
+            //printf("rank %d bytes vs %d\n", totbytes, disp_bed);
+
             double recv_dbetas[disp_bet];
             MPI_Allgatherv(&dbetas, share_mrk ? NPHEN * 3 : 0, MPI_DOUBLE,
                            recv_dbetas, cnt_bet, dis_bet, MPI_DOUBLE, MPI_COMM_WORLD);
@@ -331,7 +343,7 @@ void Bayes::process() {
 
             // Broadcast pi_est from rank 0
             for (int i=0; i<G; i++) {
-                check_mpi(MPI_Bcast(phen.get_pi_est().at(i).data(), phen.get_pi_est().at(i).size(), MPI_DOUBLE, 0, MPI_COMM_WORLD), __LINE__, __FILE__);
+                check_mpi(MPI_Bcast(phen.get_pi_est()->at(i).data(), phen.get_pi_est()->at(i).size(), MPI_DOUBLE, 0, MPI_COMM_WORLD), __LINE__, __FILE__);
             }
         }
         
@@ -339,7 +351,26 @@ void Bayes::process() {
         if (rank == 0)
             printf("RESULT : It %d  total proc time = %7.3f sec, with sync time = %7.3f\n", it, te_it - ts_it, t_it_sync);
 
+
+        // Write output files
+        if (it % opt.get_output_thin_rate() == 0) {
+            const unsigned nthinned = it / opt.get_output_thin_rate() - 1;
+            for (auto& phen : pmgr.get_phens()) {
+                if (rank == 0) {
+                    //phen.print_pi_est();
+                    write_ofile_csv(*(phen.get_outcsv_fh()), it,  phen.get_sigmag(), phen.get_sigmae(), phen.get_m0_sum(), nthinned, phen.get_pi_est());
+                }
+                write_ofile_h1(*(phen.get_outbet_fh()), rank, Mt, it, nthinned, S, M, phen.get_betas().data(), MPI_DOUBLE);
+                write_ofile_h1(*(phen.get_outcpn_fh()), rank, Mt, it, nthinned, S, M, phen.get_comp().data(),  MPI_INTEGER);
+            }
+        }
+
     } // End iteration loop
+
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    for (auto& phen : pmgr.get_phens())
+        phen.close_output_files();
 }
 
 // counts[rank]: holds either NPHEN * 3 or 0
@@ -358,7 +389,7 @@ void Bayes::update_epsilon(const int* counts, const double* dbetas, const unsign
         //printf(" cnt > 0: task %d, get for rank %d cnt = %d dbetas:\n", rank, i, cnt);
         int pheni = 0;
         for (auto& phen : pmgr.get_phens()) {
-            //printf(" - %20.15f\n", dbetas[cnt_tot + pheni * 3]);
+            //printf("r:%d p:%d - dbeta = %20.15f\n", rank, pheni, dbetas[cnt_tot + pheni * 3]);
             if (dbetas[cnt_tot + pheni * 3] != 0.0)
                 phen.update_epsilon(&dbetas[cnt_tot + pheni * 3], &bed[bedi * mbytes]);
             //phen.update_epsilon_sum();
@@ -368,6 +399,7 @@ void Bayes::update_epsilon(const int* counts, const double* dbetas, const unsign
         cnt_tot += cnt;
         bedi    += 1;
     }
+    fflush(stdout);
 }
 
 // EO, review!!
@@ -443,6 +475,10 @@ void Bayes::setup_processing() {
     load_genotype();
     pmgr.read_phen_files(opt, get_N(), get_M());
     check_processing_setup();
+
+    if (rank == 0)
+        printf("INFO   : output directory: %s\n", opt.get_out_dir().c_str());
+
     MPI_Barrier(MPI_COMM_WORLD);
     double ts = MPI_Wtime();
     pmgr.compute_markers_statistics(bed_data, get_N(), get_M(), mbytes);

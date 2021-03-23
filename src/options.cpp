@@ -8,9 +8,15 @@
 #include <mpi.h>
 #include <boost/algorithm/string/trim.hpp>
 #include "options.hpp"
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 // Function to parse command line options
 void Options::read_command_line_options(int argc, char** argv) {
+    
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
     std::stringstream ss;
     ss << "\nardyh command line options:\n";
@@ -111,13 +117,32 @@ void Options::read_command_line_options(int argc, char** argv) {
             }
             ss << "--S " << argv[i] << "\n";
 
+        }  else if (!strcmp(argv[i], "--out-dir")) {
+            if (i == argc - 1) fail_if_last(argv, i);
+            out_dir = argv[++i];
+            fs::path pod = out_dir;
+            if (!fs::exists(pod)) {
+                fs::create_directory(pod);
+            }
+            ss << "--out-dir " << out_dir << "\n";
+            
+        } else if (!strcmp(argv[i], "--output-thin-rate")) {
+            if (i == argc - 1) fail_if_last(argv, i);
+            if (atoi(argv[i + 1]) < 1) {
+                std::cout << "FATAL  : option --output-thin-rate has to be a strictly positive integer! (" << argv[i + 1] << " was passed)" << std::endl;
+                exit(EXIT_FAILURE);
+            }
+            thin = (unsigned int)atoi(argv[++i]);
+            ss << "--output-thin-rate " << thin << "\n";
+        
         } else {
             std::cout << "FATAL: option \"" << argv[i] << "\" unknown\n";
             exit(EXIT_FAILURE);
         }
     }
 
-    //std::cout << ss.str() << std::endl;
+    if (rank == 0)
+        std::cout << ss.str() << std::endl;
 }
 
 void Options::list_phen_files() const {

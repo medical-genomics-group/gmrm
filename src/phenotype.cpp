@@ -10,6 +10,9 @@
 #include "na_lut.hpp"
 #include <boost/range/algorithm.hpp>
 #include <boost/random/uniform_int.hpp>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 
 Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int M) :
@@ -43,6 +46,8 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     for (int i=0; i<K; i++) dirich.push_back(1.0);
 
     read_file(opt);
+
+    set_output_filenames(opt.get_out_dir());
 }
 
 //copy ctor
@@ -50,6 +55,9 @@ Phenotype::Phenotype(const Phenotype& rhs) :
     dist_m(rhs.dist_m),
     dist_d(rhs.dist_d),
     filepath(rhs.filepath),
+    outbet_fp(rhs.outbet_fp),
+    outcpn_fp(rhs.outcpn_fp),
+    outcsv_fp(rhs.outcsv_fp),
     nonas(rhs.nonas),
     nas(rhs.nas),
     im4(rhs.im4),
@@ -88,6 +96,62 @@ Phenotype::Phenotype(const Phenotype& rhs) :
     }
     cass = (int*) _mm_malloc(size_t(K * G) * sizeof(int), 32);
     check_malloc(cass, __LINE__, __FILE__);
+}
+
+int  Phenotype::get_m0_sum() {
+    int sum = 0;
+    for (int i=0; i<m0.size(); i++)
+        sum += m0.at(i);
+    return sum;
+}
+
+void Phenotype::set_output_filenames(const std::string out_dir) {
+    fs::path pphen = filepath;
+    fs::path base  = out_dir;
+    base /= pphen.stem();
+    fs::path pbet = base;
+    pbet += ".bet";
+    fs::path pcpn = base;
+    pcpn += ".cpn";
+    fs::path pcsv = base;
+    pcsv += ".csv";
+    
+    outbet_fp = pbet.string();
+    outcpn_fp = pcpn.string();
+    outcsv_fp = pcsv.string();
+}
+
+void Phenotype::open_output_files() {
+    check_mpi(MPI_File_open(MPI_COMM_WORLD,
+                            get_outbet_fp().c_str(),  
+                            MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_EXCL,
+                            MPI_INFO_NULL,
+                            get_outbet_fh()),
+              __LINE__, __FILE__);
+    check_mpi(MPI_File_open(MPI_COMM_WORLD,
+                            get_outcpn_fp().c_str(),  
+                            MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_EXCL,
+                            MPI_INFO_NULL,
+                            get_outcpn_fh()),
+              __LINE__, __FILE__);
+    check_mpi(MPI_File_open(MPI_COMM_WORLD,
+                            get_outcsv_fp().c_str(),  
+                            MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_EXCL,
+                            MPI_INFO_NULL,
+                            get_outcsv_fh()),
+              __LINE__, __FILE__);
+}
+
+void Phenotype::close_output_files() {
+    check_mpi(MPI_File_close(get_outbet_fh()), __LINE__, __FILE__);    
+    check_mpi(MPI_File_close(get_outcpn_fh()), __LINE__, __FILE__);    
+    check_mpi(MPI_File_close(get_outcsv_fh()), __LINE__, __FILE__);    
+}
+
+void Phenotype::delete_output_files() {
+    MPI_File_delete(get_outbet_fp().c_str(), MPI_INFO_NULL);
+    MPI_File_delete(get_outcpn_fp().c_str(), MPI_INFO_NULL);
+    MPI_File_delete(get_outcsv_fp().c_str(), MPI_INFO_NULL);
 }
 
 void Phenotype::print_cass() {

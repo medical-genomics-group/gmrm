@@ -85,11 +85,13 @@ $PGM_ROOT/bin/$PGM_EXE \
 --group-mixture-file $BENCH_DIR/test.grm \
 --shuffle-markers 1 \
 --seed 123 \
---trunc-markers 10000 \
+--trunc-markers 100 \
 --verbosity 2 \
---iterations 2"
+--iterations 4 \
+--out-dir /scratch/orliac/ardyh_out \
+--output-thin-rate 1"
 
-#CMD_BASE="${CMD_BASE} --mimic-hydra"
+CMD_BASE="${CMD_BASE} --mimic-hydra"
 
 PHEN1=$BENCH_DIR/test1.phen
 PHEN2=$BENCH_DIR/test2.phen
@@ -111,11 +113,11 @@ PHENS15="--phen-files $PHEN1,$PHEN5"
 PHENS3_5="--phen-files $PHEN3,$PHEN4,$PHEN5"
 
 
-#CMD=${CMD_BASE}" "${PHENS1};  echo CMD = $CMD; $CMD;  #exit 0
+CMD=${CMD_BASE}" "${PHENS1};  echo CMD = $CMD; $CMD;  #exit 0
 #CMD=${CMD_BASE}" "${PHENS5};  echo CMD = $CMD; $CMD;  #exit 0
 #CMD=${CMD_BASE}" "${PHENS15}; echo CMD = $CMD; $CMD;  #exit 0
 
-echo; echo; CMD=${CMD_BASE}" "${PHENS1};  echo CMD = $CMD; $CMD;  #exit 0
+#echo; echo; CMD=${CMD_BASE}" "${PHENS1};  echo CMD = $CMD; $CMD;  #exit 0
 #echo; echo; CMD=${CMD_BASE}" "${PHENS2};  echo CMD = $CMD; $CMD;  #exit 0
 #echo; echo; CMD=${CMD_BASE}" "${PHENS3};  echo CMD = $CMD; $CMD;  #exit 0
 #echo; echo; CMD=${CMD_BASE}" "${PHENS4};  echo CMD = $CMD; $CMD;  #exit 0
@@ -123,7 +125,7 @@ echo; echo; CMD=${CMD_BASE}" "${PHENS1};  echo CMD = $CMD; $CMD;  #exit 0
 #CMD=${CMD_BASE}" "${PHENS1_2}; echo CMD = $CMD; $CMD;
 #CMD=${CMD_BASE}" "${PHENS1_3}; echo CMD = $CMD; $CMD;
 #CMD=${CMD_BASE}" "${PHENS1_4}; echo CMD = $CMD; $CMD;
-echo; echo; CMD=${CMD_BASE}" "${PHENS1_5}; echo CMD = $CMD; $CMD;
+#echo; echo; CMD=${CMD_BASE}" "${PHENS1_5}; echo CMD = $CMD; $CMD;
 
 #CMD=${CMD_BASE}" "${PHENS3_5}; echo CMD = $CMD; $CMD;
 

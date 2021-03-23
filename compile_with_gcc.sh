@@ -8,7 +8,7 @@ echo ARDYH_ROOT = $ARDYH_ROOT
 [[ "$ARDYH_ROOT" == *ardyh ]] || (echo "ARDYH_ROOT ($ARDYH_ROOT) expected to end with \"ardyh\"" && exit 1)
 
 module purge
-module load gcc mvapich2 boost
+module load gcc/8.3.0 mvapich2 boost
 module list
 
 cd $ARDYH_ROOT
