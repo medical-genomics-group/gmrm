@@ -2,7 +2,10 @@
 #include <assert.h>
 #include <cmath>
 #include <immintrin.h>
-
+#include <vector>
+#include <string>
+#include <sstream>
+#include <fstream>
 
 void check_malloc(const void* ptr, const int linenumber, const char* filename);
 
@@ -78,3 +81,10 @@ void mpi_file_write_at_all(const size_t N, MPI_Offset offset, MPI_File fh, MPI_D
         check_mpi(MPI_File_write_at_all(fh, offset + iim * size_t(dtsize), &buffer[iim], count, MPI_DT, &status), __LINE__, __FILE__);
     }
 }
+
+
+std::vector<std::string> split_string(std::string line, char charSplit);
+
+int get_file_line_count(std::string file_path);
+
+std::vector <std::vector<int>> parse_effect_values(std::vector <std::vector<std::string>> matrix_effects);

@@ -8,6 +8,7 @@
 #include <mpi.h>
 #include <boost/algorithm/string/trim.hpp>
 #include "options.hpp"
+#include "utilities.hpp"
 
 // Function to parse command line options
 void Options::read_command_line_options(int argc, char** argv) {
@@ -111,10 +112,50 @@ void Options::read_command_line_options(int argc, char** argv) {
             }
             ss << "--S " << argv[i] << "\n";
 
+        }
+       // List of effect files to read; comma separated if more than one.
+        else if (!strcmp(argv[i], "--mat-files")) {
+            if (i == argc - 1) fail_if_last(argv, i);
+            include_effects_ = true;
+            std::string cslist = argv[++i];
+            ss << "--mat-files " << cslist << "\n";
+            std::stringstream sslist(cslist);
+            std::string filepath;
+            std::string directEffectFile = "";
+            std::string maternalEffectFile = "";
+            std::string paternalEffectFile = "";
+            while (getline(sslist, filepath, ',')) {
+                std::ifstream mat_effect_file(filepath);
+                if (mat_effect_file.is_open()) {
+                    mat_effect_file.close();
+                    if (filepath.find("direct.") != std::string::npos) {
+                        directEffectFile = filepath;
+                    }
+                    else {
+                        if (filepath.find("maternal.") != std::string::npos) {
+                            maternalEffectFile = filepath;
+                        }
+                        else {
+                            if (filepath.find("paternal.") != std::string::npos) {
+                                paternalEffectFile = filepath;
+                            }
+                        }
+                    }
+
+                }
+                else {
+                    std::cout << "FATAL: file " << filepath << " not found\n";
+                    exit(EXIT_FAILURE);
+                }
+            }
+            mat_effect_files = { {"direct" , directEffectFile},
+                                 {"maternal" , maternalEffectFile},
+                                 {"paternal" , paternalEffectFile} };
+            std::cout << mat_effect_files.size() << "\n";
         } else {
             std::cout << "FATAL: option \"" << argv[i] << "\" unknown\n";
             exit(EXIT_FAILURE);
-        }
+        }	
     }
 
     //std::cout << ss.str() << std::endl;
@@ -152,6 +193,27 @@ void Options::check_options() {
     }
     //std::cout << "  phen file(s): OK - " << count_phen_files() << " files passed.\n";
     //list_phen_files();
+ 
+    //Examin that the effect matrices are not empty
+    if (include_effects()) {
+        if (get_mat_effect_files().size() < 1) {
+            std::cout << "FATAL  : no effect matrix files provided! Please use the --mat-files option." << std::endl;
+            exit(EXIT_FAILURE);
+        }
+
+        if (get_mat_effect_files()["direct"] == "") {
+            std::cout << "FATAL  : no direct effect matrix file provided! Please use the --mat-files option. Multiple files can be separated by comma." << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        if (get_mat_effect_files()["maternal"] == "") {
+            std::cout << "FATAL  : no maternal effect matrix file provided! Please use the --mat-files option. Multiple files can be separated by comma." << std::endl;
+            exit(EXIT_FAILURE);
+        }
+        if (get_mat_effect_files()["paternal"] == "") {
+            std::cout << "FATAL  : no paternal effect matrix file provided! Please use the --mat-files option. Multiple files can be separated by comma." << std::endl;
+            exit(EXIT_FAILURE);
+        }
+    }
 
 
     // group index and mixture files: either both or none
@@ -166,6 +228,74 @@ void Options::check_options() {
         exit(EXIT_FAILURE);
     }
 }
+
+
+/**
+* @autor Diego Garcia
+* Reads the content of the direct, maternal, and paternal effect files
+* and allocate the content in three matrices.
+*/
+void Options::read_effect_files() {
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    // Create a map iterator and point to beginning of the map of effect files
+    std::map<std::string, std::string>::iterator it = mat_effect_files.begin();
+
+    // Iterate over the map of effect files using Iterator till end.
+    while (it != mat_effect_files.end())
+    {
+        // Accessing KEY from element pointed by it.
+        std::string source_effect = it->first;
+        // Accessing VALUE from element pointed by it.
+        std::string file_name = it->second;
+
+        int line_count = get_file_line_count(file_name);
+        std::vector<std::vector<std::string>>tmpEffectMatrix(line_count);
+        std::fstream fs;
+        fs.open(file_name, std::ios::in);
+
+        if (fs.is_open()) {
+            if (rank == 0)
+                std::cout << "INFO   : Reading effects from [" + file_name + "]." << std::endl;
+            std::string effect_line;
+
+            int i = 0;
+            while (getline(fs, effect_line)) {
+                //std::cout << "::: " << effect_line << "\n";
+                boost::algorithm::trim(effect_line);
+                if (effect_line.length() == 0)  continue;
+                std::vector<std::string> line_effect_values = split_string(effect_line, ' ');
+                tmpEffectMatrix[i] = line_effect_values;
+            }
+
+            std::vector <std::vector<int>> matrix_effects_ardyh = parse_effect_values(tmpEffectMatrix);
+
+            //Add the matrix to the map of three effects
+            if (source_effect == "direct") {
+                mat_direct_effect = matrix_effects_ardyh;
+            }
+            else {
+                if (source_effect == "maternal") {
+                    mat_maternal_effect = matrix_effects_ardyh;
+                }
+                else {
+                    if (source_effect == "paternal") {
+                        mat_paternal_effect = matrix_effects_ardyh;
+                    }
+                }
+            }
+
+
+            fs.close();
+        }
+
+        // Increment the Iterator to point to next entry
+        it++;
+    }
+
+}
+
 
 void Options::read_group_mixture_file() {
 
