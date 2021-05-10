@@ -44,6 +44,7 @@ done
 if [ $COMPILER == "gcc" ]; then
     echo "GCC"
     source ../compile_with_gcc.sh $1
+    export MV2_ENABLE_AFFINITY=0
     #export GOMP_CPU_AFFINITY=verbose
 elif [ $COMPILER == "intel" ]; then
     echo "INTEL"
@@ -85,6 +86,9 @@ SEARCH_DIRS="--search-dir src:=$ARDYH_ROOT/src --search-dir sym:=$ARDYH_ROOT/bui
 
 AMPLXE1="amplxe-cl -c hotspots    -r $OUT_DIR/vtune  -data-limit=0 -- " #-no-auto-finalize $SEARCH_DIRS"
 #AMPLXE1="amplxe-cl -c concurrency -r $OUT_DIR/vtune  -data-limit=0 -- " #-no-auto-finalize $SEARCH_DIRS"
+AMPLXE2="amplxe-cl -c memory-access -knob analyze-mem-objects=true -knob dram-bandwidth-limits=true  -r $OUT_DIR/vtune  -data-limit=0 -- "
+AMPLXE2="amplxe-cl -c memory-access                                -knob dram-bandwidth-limits=true  -r $OUT_DIR/vtune  -data-limit=0 -- "
+AMPLXE2="amplxe-cl -c memory-access                                                                  -r $OUT_DIR/vtune  -data-limit=0 -- "
 
 ADVIXE1="advixe-cl --collect survey           -no-auto-finalize -project-dir=$OUT_DIR/advisor  $SEARCH_DIRS -data-limit=0 -- "
 ADVIXE2="advixe-cl --collect tripcounts -flop -no-auto-finalize -project-dir=$OUT_DIR/advisor  $SEARCH_DIRS -data-limit=0 -- "
@@ -98,9 +102,9 @@ CMD_TAIL="$ARDYH_ROOT/bin/$ARDYH_EXE \
 --group-mixture-file $BENCH_DIR/test.grm \
 --shuffle-markers 1 \
 --seed 123 \
---trunc-markers 500 \
+--trunc-markers 100 \
 --verbosity 0 \
---iterations 10"
+--iterations 5"
 
 #BED
 env | grep SLURM_
@@ -108,7 +112,10 @@ env | grep OMP_
 
 CMD="${CMD_BASE} ${AMPLXE1} ${CMD_TAIL} ${PHENS1}"
 echo CMD = $CMD
-#$CMD
+$CMD
+CMD="${CMD_BASE} ${AMPLXE2} ${CMD_TAIL} ${PHENS1}"
+echo CMD = $CMD
+$CMD
 
 CMD="${CMD_BASE} ${ADVIXE1} ${CMD_TAIL} ${PHENS1}"
 echo CMD = $CMD
