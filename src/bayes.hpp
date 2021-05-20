@@ -1,6 +1,7 @@
 #pragma once
 #include <iostream>
 #include <typeinfo>
+#include <map>
 #include "options.hpp"
 #include "phenotype.hpp"
 #include "dimensions.hpp"
@@ -26,24 +27,28 @@ public:
                                                         cva(opt.get_cva()), 
                                                         cvai(opt.get_cvai()) {
 
-        pi_prior.resize(G);
-        mtotgrp.resize(G);
-
         set_block_of_markers();
 
-        for (int i=0 ; i<G; i++) {
-            mtotgrp.at(i) = 0;
-            double sum_cva = 0.0;
-            for (int j=0; j<K-1; j++) {
-                sum_cva += cva[i][j+1];
-            }
-            pi_prior[i].resize(K, 0.5);
-            for (int j=1; j<K; j++) {
-                pi_prior[i][j] =  pi_prior[i][0] * cva[i][j] / sum_cva;
-            }
-        }        
+        if (!opt.predict()) {
+            
+            pi_prior.resize(G);
+            mtotgrp.resize(G);
+
+            for (int i=0 ; i<G; i++) {
+                mtotgrp.at(i) = 0;
+                double sum_cva = 0.0;
+                for (int j=0; j<K-1; j++) {
+                    sum_cva += cva[i][j+1];
+                }
+                pi_prior[i].resize(K, 0.5);
+                for (int j=1; j<K; j++) {
+                    pi_prior[i][j] =  pi_prior[i][0] * cva[i][j] / sum_cva;
+                }
+            }        
+        }
 
         setup_processing();
+
         if (rank == 0) {
             //print_cva();
             //print_cvai();
@@ -55,7 +60,9 @@ public:
         if (bed_data != nullptr)  _mm_free(bed_data);
     }
 
+    void predict();
     void process();
+    void cross_bim_files();
     double dot_product(const int mloc, double* __restrict__ phen, const double mu, const double sigma);
     void list_phen_files() const { opt.list_phen_files(); }
     int  get_N()  { return N;  } // Invariant over tasks
@@ -88,6 +95,9 @@ private:
     const std::vector<std::vector<double>> cva;
     const std::vector<std::vector<double>> cvai;
     std::vector<std::vector<double>> pi_prior;
+
+    std::vector<std::string>   rsid;
+    std::map<std::string, int> m_refrsid;
 
     int S = 0;              // task marker start 
     int M = 0;              // task marker length

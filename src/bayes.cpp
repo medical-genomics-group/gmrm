@@ -8,8 +8,230 @@
 #include "bayes.hpp"
 #include "utilities.hpp"
 #include "dotp_lut.hpp"
+#include "na_lut.hpp"
 #include "xfiles.hpp"
+#include <boost/math/special_functions/gamma.hpp>
 
+
+void Bayes::predict() {
+
+    MPI_Status status;
+    MPI_Offset file_size = 0;
+    MPI_File*  fh;
+
+    cross_bim_files();
+
+    int pidx = 0;
+    for (auto& phen : pmgr.get_phens()) {
+        pidx += 1;
+
+        const std::vector<unsigned char> mask4 = phen.get_mask4();
+        const int im4 = phen.get_im4();
+
+        fh = phen.get_inbet_fh();
+
+        phen.set_input_filenames();
+
+        check_mpi(MPI_File_open(MPI_COMM_WORLD,
+                                phen.get_inbet_fp().c_str(),  
+                                MPI_MODE_RDONLY,
+                                MPI_INFO_NULL,
+                                fh),
+                  __LINE__, __FILE__);
+        
+        check_mpi(MPI_File_get_size(*fh, &file_size), __LINE__, __FILE__);
+        //printf("file_size = %u B\n", file_size);
+    
+        // First element of the .bet is the total number of processed markers
+        // Then: iteration (uint) beta (double) for all markers
+        uint Mtot_ = 0;
+        MPI_Offset betoff = size_t(0);
+        check_mpi(MPI_File_read_at_all(*fh, betoff, &Mtot_, 1, MPI_UNSIGNED, &status), __LINE__, __FILE__);
+        if (Mtot_ != m_refrsid.size()) {
+            printf("Mismatch between expected and Mtot read from .bet file: %d vs %d\n", rsid.size(), Mtot_);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+
+        assert((file_size - sizeof(uint)) % (Mtot_ * sizeof(double) + sizeof(uint)) == 0);
+        uint niter = (file_size - sizeof(uint)) / (Mtot_ * sizeof(double) + sizeof(uint));
+        printf("INFO  : Number of recorded iterations in .bet file: %u\n", niter);
+
+        double* beta_sum = (double*) _mm_malloc(size_t(Mtot_) * sizeof(double), 32);
+        check_malloc(beta_sum, __LINE__, __FILE__);
+        for (int i=0; i<Mtot_; i++) beta_sum[i] = 0.0;
+
+        double* beta_it = (double*) _mm_malloc(size_t(Mtot_) * sizeof(double), 32);
+        check_malloc(beta_it, __LINE__, __FILE__);
+        
+        for (uint i=0; i<niter; i++) {
+            betoff
+                = sizeof(uint) // Mtot
+                + (sizeof(uint) + size_t(Mtot_) * sizeof(double)) * size_t(i)
+                + sizeof(uint);
+            check_mpi(MPI_File_read_at_all(*fh, betoff, beta_it, Mtot_, MPI_DOUBLE, &status), __LINE__, __FILE__);
+            for (int j=0; j<Mtot_;j++)
+                beta_sum[j] += beta_it[j];
+        }
+        
+        for (int j=0; j<Mtot_;j++)
+            beta_sum[j] /= double(niter);
+
+        double* g_k = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+        check_malloc(g_k, __LINE__, __FILE__);
+        for (int i=0; i<im4*4; i++) g_k[i] = 0.0;
+
+        for (int mrki=0; mrki<Mm; mrki++) {
+
+            // Get rsid from current 
+            int mglo = S + mrki;
+            std::string id = rsid.at(mglo);
+
+            // Skip markers with no corresponding rsid in reference bim file
+            if (m_refrsid.find(id) == m_refrsid.end()) {
+                //printf("%d -> %d = %s not found in reference bim\n", mrki, mglo, id.c_str());
+                continue;
+            }
+
+            int rmglo = m_refrsid.find(id)->second; // global marker index in reference bed
+
+            size_t bedix = size_t(mrki) * size_t(mbytes);
+            const unsigned char* bedm = &bed_data[bedix];
+
+            double mave = phen.get_marker_ave(mrki);
+            double msig = phen.get_marker_sig(mrki);
+
+            for (int j=0; j<im4; j++) {
+                for (int k=0; k<4; k++) {
+                    double val = (dotp_lut_a[bedm[j] * 4 + k] - mave) * dotp_lut_b[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k] * msig;
+                    g_k[j*4+k] += val * beta_sum[mglo];
+                }
+            }
+        }
+
+        //double sumgk = 0.0;
+        //for (int j=0; j<im4*4; j++) sumgk += g_k[j];
+        //printf("sumgk = %15.6f\n", sumgk);
+        
+        check_mpi(MPI_File_close(fh), __LINE__, __FILE__);
+
+        double* g = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+        check_malloc(g, __LINE__, __FILE__);
+
+        check_mpi(MPI_Allreduce(g_k, g, im4*4, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD), __LINE__, __FILE__);
+ 
+        double* y_k = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+        check_malloc(y_k, __LINE__, __FILE__);
+
+        phen.get_centered_and_scaled_y(y_k);
+
+        //EO: already done when computing original epsilon when reading .phen
+        //phen.set_nas_to_zero(y_k, im4*4);
+
+        //double sumyk = 0.0;
+        //for (int j=0; j<im4*4; j++) {
+        //    if (j<20)
+        //        printf("%d y_k[%d]=%20.15f, g_k[%d]=%20.15f\n", j, j, y_k[j], j, g_k[j]);
+        //    sumyk += y_k[j];
+        //}
+        //printf("sumyk = %15.6f\n", sumyk);
+ 
+        // NAs are 0.0 in all, so should be safe
+        for (int i=0; i<im4*4; i++)
+            y_k[i] -= (g[i] - g_k[i]);
+
+        double sigma = 0.0;
+        for (int i=0; i<N; i++)
+            sigma += y_k[i] * y_k[i];
+        sigma /= phen.get_nonas();
+        //printf("r: %d sigma = %20.15f\n", rank, sigma);
+       
+
+        for (int mrki=0; mrki<Mm; mrki++) {
+
+            // Global index in current .bim
+            int mglo = S + mrki;
+            std::string id = rsid.at(mglo);
+
+            // Skip markers with no corresponding rsid in reference bim file
+            if (m_refrsid.find(id) == m_refrsid.end()) {
+                //printf("%d -> %d = %s not found in reference bim\n", mrki, mglo, id.c_str());
+                continue;
+            }
+
+            // Global marker index in reference bed
+            int rmglo = m_refrsid.find(id)->second;
+
+            size_t bedix = size_t(mrki) * size_t(mbytes);
+            const unsigned char* bedm = &bed_data[bedix];
+
+            double mave = phen.get_marker_ave(mrki);
+            double msig = phen.get_marker_sig(mrki);
+
+            double xtx = 0.0;
+            double xty = 0.0;
+            double chk = 0.0;
+            for (int j=0; j<im4; j++) {
+                for (int k=0; k<4; k++) {
+                    double val = dotp_lut_a[bedm[j] * 4 + k] * dotp_lut_b[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k];
+                    xtx += val * val;
+                    xty += val * y_k[j*4 + k];
+                }
+            }
+
+            double beta  = xty / xtx;
+            double tdist = xty / sqrt(sigma * xtx);
+            double se    = beta / tdist;
+            double pval  = 1.0 - boost::math::gamma_p(0.5, tdist * tdist * 0.5);
+            
+            if (mrki < 5) {
+                printf("r: %3d  m: %8d %8d (%5s) %8d  beta=%20.15f  se=%20.15f  tdist=%20.15f pval=%20.15f   xtx=%10.1f xty=%15.6f\n", rank, mrki, mglo, id.c_str(), rmglo, beta, se, tdist, pval, xtx, xty);
+            }
+        }
+
+        _mm_free(beta_sum);
+        _mm_free(beta_it);
+        _mm_free(g_k);
+        _mm_free(g);
+        _mm_free(y_k);
+    }
+}
+
+// EO: bim_file - I assume that the row number is the index
+//
+void Bayes::cross_bim_files() {
+
+    printf("INFO  : bim file:     %s\n", opt.get_bim_file().c_str());
+    printf("INFO  : ref bim file: %s\n", opt.get_ref_bim_file().c_str());
+    
+    std::ifstream in(opt.get_bim_file().c_str());
+    if (!in) throw ("Error: can not open the file [" + opt.get_bim_file() + "] to read.");
+    std::string   id, allele1, allele2;
+    unsigned chr, physPos, idx = 0;
+    float    genPos;
+    while (in >> chr >> id >> genPos >> physPos >> allele1 >> allele2) {
+        rsid.push_back(id);
+    }
+    in.close();
+    int nrsid = rsid.size();
+    if (rank == 0)
+        printf("INFO  : found %d ids in bim file\n", nrsid);
+
+    std::ifstream refin(opt.get_ref_bim_file().c_str());
+    if (!refin) throw ("Error: can not open the file [" + opt.get_ref_bim_file() + "] to read.");
+    idx = 0;
+    while (refin >> chr >> id >> genPos >> physPos >> allele1 >> allele2) {        
+        m_refrsid[id] = idx++;
+    }
+    refin.close();
+    if (rank == 0)
+        printf("INFO  : found %d ids in reference bim file\n", idx);
+    
+    //for (int i=0; i<nrsid; i++) {
+    //    if (m_refrsid.find(rsid.at(i)) == m_refrsid.end()) {
+    //        printf("marker %d -> %s not found in ref bim file\n", i, rsid.at(i).c_str());
+    //    }
+    //}
+}
 
 void Bayes::process() {
 
@@ -471,9 +693,10 @@ double Bayes::dot_product(const int mloc, double* __restrict__ phen, const doubl
 void Bayes::setup_processing() {
 
     mbytes = (N %  4) ? (size_t) N /  4 + 1 : (size_t) N /  4;
-
     load_genotype();
+
     pmgr.read_phen_files(opt, get_N(), get_M());
+
     check_processing_setup();
 
     if (rank == 0)
@@ -486,6 +709,8 @@ void Bayes::setup_processing() {
     double te = MPI_Wtime();
     if (rank == 0)
         printf("INFO   : Time to compute the markers' statistics: %.2f seconds.\n", te - ts);
+
+    if (opt.predict()) return;
 
     for (auto& phen : pmgr.get_phens()) {
         phen.set_prng_m((unsigned int)(opt.get_seed() + (rank + 0)));

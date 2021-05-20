@@ -15,9 +15,11 @@ private:
     Distributions dist_m; // for shuffling the markers
     Distributions dist_d; // for sampling the distributions
     std::string filepath;
+    std::string inbet_fp;
     std::string outbet_fp;
     std::string outcpn_fp;
     std::string outcsv_fp;
+    MPI_File inbet_fh;
     MPI_File outbet_fh;
     MPI_File outcpn_fh;
     MPI_File outcsv_fh;
@@ -66,9 +68,11 @@ public:
     }
 
     std::string get_filepath()  const { return filepath; }
+    std::string get_inbet_fp() const { return inbet_fp; }
     std::string get_outbet_fp() const { return outbet_fp; }
     std::string get_outcpn_fp() const { return outcpn_fp; }
     std::string get_outcsv_fp() const { return outcsv_fp; }
+    MPI_File* get_inbet_fh() { return &inbet_fh; }
     MPI_File* get_outbet_fh() { return &outbet_fh; }
     MPI_File* get_outcpn_fh() { return &outcpn_fh; }
     MPI_File* get_outcsv_fh() { return &outcsv_fh; }
@@ -208,6 +212,43 @@ public:
     void open_output_files();
     void close_output_files();
     void delete_output_files();
+
+    void set_input_filenames();
+
+    void set_nas_to_zero(double* y, const int N);
+
+    //EO: trick for --prediction, assumed epsilon unchanged!!
+    void get_centered_and_scaled_y(double* y_k) {
+        for (int i=0; i<N; i++) {
+            //if (i<10)
+            //    printf("epsilon_[%d] = %20.15f\n", i, epsilon_[i]);
+            y_k[i] = epsilon_[i];
+        }
+        /*
+        double sum = 0.0;
+        for (int j=0; j<im4; j++) {
+            for (int k=0; k<4; k++) {
+                sum += data[j*4 + k] * mask4[j*4 + k];
+            }
+        }
+        double ave = sum / double(nonas);
+        double sig = 0.0;
+        for (int j=0; j<im4; j++) {
+            for (int k=0; k<4; k++) {
+                sig += (data[j*4 + k] - ave) * (data[j*4 + k] - ave) * mask4[j*4 + k];
+            }
+        }
+        sig /= (nonas - 1);
+        sig  = sqrt(sig);
+        printf("y sum = %20.15f, N = %d, nonas = %d, ave = %20.15f, sig = %20.15f\n", sum, N, nonas, ave, sig);
+
+        for (int j=0; j<im4; j++) {
+            for (int k=0; k<4; k++) {
+                y_k[j*4 + k] = (data[j*4 + k] - ave) / sig * mask4[j*4 + k];
+            }
+        }
+        */
+    }
 
     friend class PhenMgr;
 };
