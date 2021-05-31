@@ -15,6 +15,11 @@
 
 void Bayes::predict() {
 
+    MPI_Barrier(MPI_COMM_WORLD);
+    double ts = MPI_Wtime();
+
+    check_openmp();
+
     MPI_Status status;
     MPI_Offset file_size = 0;
     MPI_File*  fh;
@@ -25,20 +30,13 @@ void Bayes::predict() {
     for (auto& phen : pmgr.get_phens()) {
         pidx += 1;
 
+        phen.delete_output_prediction_files();
+        phen.open_prediction_files();
+
         const std::vector<unsigned char> mask4 = phen.get_mask4();
         const int im4 = phen.get_im4();
 
         fh = phen.get_inbet_fh();
-
-        phen.set_input_filenames();
-
-        check_mpi(MPI_File_open(MPI_COMM_WORLD,
-                                phen.get_inbet_fp().c_str(),  
-                                MPI_MODE_RDONLY,
-                                MPI_INFO_NULL,
-                                fh),
-                  __LINE__, __FILE__);
-        
         check_mpi(MPI_File_get_size(*fh, &file_size), __LINE__, __FILE__);
         //printf("file_size = %u B\n", file_size);
     
@@ -54,7 +52,8 @@ void Bayes::predict() {
 
         assert((file_size - sizeof(uint)) % (Mtot_ * sizeof(double) + sizeof(uint)) == 0);
         uint niter = (file_size - sizeof(uint)) / (Mtot_ * sizeof(double) + sizeof(uint));
-        printf("INFO  : Number of recorded iterations in .bet file: %u\n", niter);
+        if (rank == 0)
+            printf("INFO   : Number of recorded iterations in .bet file: %u\n", niter);
 
         double* beta_sum = (double*) _mm_malloc(size_t(Mtot_) * sizeof(double), 32);
         check_malloc(beta_sum, __LINE__, __FILE__);
@@ -80,6 +79,9 @@ void Bayes::predict() {
         check_malloc(g_k, __LINE__, __FILE__);
         for (int i=0; i<im4*4; i++) g_k[i] = 0.0;
 
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif 
         for (int mrki=0; mrki<Mm; mrki++) {
 
             // Get rsid from current 
@@ -108,12 +110,6 @@ void Bayes::predict() {
             }
         }
 
-        //double sumgk = 0.0;
-        //for (int j=0; j<im4*4; j++) sumgk += g_k[j];
-        //printf("sumgk = %15.6f\n", sumgk);
-        
-        check_mpi(MPI_File_close(fh), __LINE__, __FILE__);
-
         double* g = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
         check_malloc(g, __LINE__, __FILE__);
 
@@ -125,16 +121,7 @@ void Bayes::predict() {
         phen.get_centered_and_scaled_y(y_k);
 
         //EO: already done when computing original epsilon when reading .phen
-        //phen.set_nas_to_zero(y_k, im4*4);
-
-        //double sumyk = 0.0;
-        //for (int j=0; j<im4*4; j++) {
-        //    if (j<20)
-        //        printf("%d y_k[%d]=%20.15f, g_k[%d]=%20.15f\n", j, j, y_k[j], j, g_k[j]);
-        //    sumyk += y_k[j];
-        //}
-        //printf("sumyk = %15.6f\n", sumyk);
- 
+        // phen.set_nas_to_zero(y_k, im4*4);
         // NAs are 0.0 in all, so should be safe
         for (int i=0; i<im4*4; i++)
             y_k[i] -= (g[i] - g_k[i]);
@@ -145,7 +132,9 @@ void Bayes::predict() {
         sigma /= phen.get_nonas();
         //printf("r: %d sigma = %20.15f\n", rank, sigma);
        
-
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif  
         for (int mrki=0; mrki<Mm; mrki++) {
 
             // Global index in current .bim
@@ -183,10 +172,21 @@ void Bayes::predict() {
             double se    = beta / tdist;
             double pval  = 1.0 - boost::math::gamma_p(0.5, tdist * tdist * 0.5);
             
-            if (mrki < 5) {
-                printf("r: %3d  m: %8d %8d (%5s) %8d  beta=%20.15f  se=%20.15f  tdist=%20.15f pval=%20.15f   xtx=%10.1f xty=%15.6f\n", rank, mrki, mglo, id.c_str(), rmglo, beta, se, tdist, pval, xtx, xty);
-            }
+            //if (mrki < 5) {
+            //    printf("r: %3d  m: %8d %8d (%5s) %8d  beta=%20.15f  se=%20.15f  tdist=%20.15f pval=%20.15f   xtx=%10.1f xty=%15.6f\n", rank, mrki, mglo, id.c_str(), rmglo, beta, se, tdist, pval, xtx, xty);
+            //}
+
+            char buff[LENBUF];
+            int cx = snprintf(buff, LENBUF, "%20s %8d %8d %20.15f %20.15f %20.15f %20.15f\n", id.c_str(), mglo, rmglo, beta, se, tdist, pval);
+            assert(cx >= 0 && cx < LENBUF);
+
+            MPI_Offset offset = mglo * strlen(buff);
+            check_mpi(MPI_File_write_at(*phen.get_outmlma_fh(),
+                                        offset, &buff, strlen(buff), MPI_CHAR, &status),
+                      __LINE__, __FILE__);
         }
+
+        phen.close_prediction_files();
 
         _mm_free(beta_sum);
         _mm_free(beta_it);
@@ -194,14 +194,20 @@ void Bayes::predict() {
         _mm_free(g);
         _mm_free(y_k);
     }
+
+    fflush(stdout);
+    double te = MPI_Wtime();
+    MPI_Barrier(MPI_COMM_WORLD);
+    if (rank == 0)
+        printf("INFO   : Time to compute the predictions: %.2f seconds.\n", te - ts);
 }
 
 // EO: bim_file - I assume that the row number is the index
 //
 void Bayes::cross_bim_files() {
 
-    printf("INFO  : bim file:     %s\n", opt.get_bim_file().c_str());
-    printf("INFO  : ref bim file: %s\n", opt.get_ref_bim_file().c_str());
+    printf("INFO   : bim file:     %s\n", opt.get_bim_file().c_str());
+    printf("INFO   : ref bim file: %s\n", opt.get_ref_bim_file().c_str());
     
     std::ifstream in(opt.get_bim_file().c_str());
     if (!in) throw ("Error: can not open the file [" + opt.get_bim_file() + "] to read.");
@@ -214,7 +220,7 @@ void Bayes::cross_bim_files() {
     in.close();
     int nrsid = rsid.size();
     if (rank == 0)
-        printf("INFO  : found %d ids in bim file\n", nrsid);
+        printf("INFO   : found %d ids in bim file\n", nrsid);
 
     std::ifstream refin(opt.get_ref_bim_file().c_str());
     if (!refin) throw ("Error: can not open the file [" + opt.get_ref_bim_file() + "] to read.");
@@ -224,13 +230,7 @@ void Bayes::cross_bim_files() {
     }
     refin.close();
     if (rank == 0)
-        printf("INFO  : found %d ids in reference bim file\n", idx);
-    
-    //for (int i=0; i<nrsid; i++) {
-    //    if (m_refrsid.find(rsid.at(i)) == m_refrsid.end()) {
-    //        printf("marker %d -> %s not found in ref bim file\n", i, rsid.at(i).c_str());
-    //    }
-    //}
+        printf("INFO   : found %d ids in reference bim file\n", idx);
 }
 
 void Bayes::process() {
@@ -793,7 +793,7 @@ void Bayes::load_genotype() {
 
     bed_data = (unsigned char*)_mm_malloc(size_bytes, 64);
     check_malloc(bed_data, __LINE__, __FILE__);
-    printf("rank %d allocation %zu bytes (%.3f GB) for the raw data. Marker start at S = %d\n", rank, size_bytes, double(size_bytes) / 1.0E9, S);
+    printf("INFO   : rank %4d has allocated %zu bytes (%.3f GB) for raw data.\n", rank, size_bytes, double(size_bytes) / 1.0E9);
 
     // Offset to section of bed file to be processed by task
     MPI_Offset offset = size_t(3) + size_t(S) * size_t(mbytes) * sizeof(unsigned char);
@@ -831,8 +831,7 @@ void Bayes::set_block_of_markers() {
     M = len[rank];
     S = start[rank];
     
-    std::cout << "rank " << rank << " has " << M << " markers over Mt = " << Mt << ", Mm = " << Mm << ", starting at S = " << S << std::endl;
-
+    printf("INFO   : rank %4d has %d markers over tot Mt = %d, max Mm = %d, starting at S = %d\n", rank, M, Mt, Mm, S);
     //@todo: mpi check sum over tasks == Mt
 }
 

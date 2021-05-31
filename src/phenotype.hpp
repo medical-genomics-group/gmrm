@@ -16,10 +16,12 @@ private:
     Distributions dist_d; // for sampling the distributions
     std::string filepath;
     std::string inbet_fp;
+    std::string outmlma_fp;
     std::string outbet_fp;
     std::string outcpn_fp;
     std::string outcsv_fp;
     MPI_File inbet_fh;
+    MPI_File outmlma_fh;
     MPI_File outbet_fh;
     MPI_File outcpn_fh;
     MPI_File outcsv_fh;
@@ -67,15 +69,17 @@ public:
         if (cass     != nullptr)  _mm_free(cass);
     }
 
-    std::string get_filepath()  const { return filepath; }
-    std::string get_inbet_fp() const { return inbet_fp; }
-    std::string get_outbet_fp() const { return outbet_fp; }
-    std::string get_outcpn_fp() const { return outcpn_fp; }
-    std::string get_outcsv_fp() const { return outcsv_fp; }
-    MPI_File* get_inbet_fh() { return &inbet_fh; }
-    MPI_File* get_outbet_fh() { return &outbet_fh; }
-    MPI_File* get_outcpn_fh() { return &outcpn_fh; }
-    MPI_File* get_outcsv_fh() { return &outcsv_fh; }
+    std::string get_filepath()   const { return filepath; }
+    std::string get_inbet_fp()   const { return inbet_fp; }
+    std::string get_outmlma_fp() const { return outmlma_fp; }
+    std::string get_outbet_fp()  const { return outbet_fp; }
+    std::string get_outcpn_fp()  const { return outcpn_fp; }
+    std::string get_outcsv_fp()  const { return outcsv_fp; }
+    MPI_File* get_inbet_fh()   { return &inbet_fh; }
+    MPI_File* get_outmlma_fh() { return &outmlma_fh; }
+    MPI_File* get_outbet_fh()  { return &outbet_fh; }
+    MPI_File* get_outcpn_fh()  { return &outcpn_fh; }
+    MPI_File* get_outcsv_fh()  { return &outcsv_fh; }
     void print_info() const;
     std::vector<unsigned char>& get_mask4() { return mask4; }
     std::vector<int>&           get_midx()  { return midx;  }
@@ -209,11 +213,15 @@ public:
 
     void update_pi_est_dirichlet(const int group);
 
+    void open_prediction_files();
+    void close_prediction_files();
+    void delete_output_prediction_files();
+
     void open_output_files();
     void close_output_files();
     void delete_output_files();
 
-    void set_input_filenames();
+    void set_prediction_filenames(const std::string out_dir);
 
     void set_nas_to_zero(double* y, const int N);
 

@@ -46,6 +46,8 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
 
         dirich.clear();
         for (int i=0; i<K; i++) dirich.push_back(1.0);
+    } else {
+        set_prediction_filenames(opt.get_out_dir());
     }
 
     set_output_filenames(opt.get_out_dir());
@@ -109,10 +111,17 @@ int Phenotype::get_m0_sum() {
 }
 
 // Set input filenames based on input phen file (as per output)
-void Phenotype::set_input_filenames() {
+void Phenotype::set_prediction_filenames(const std::string out_dir) {
     fs::path pibet = filepath;
     pibet.replace_extension(".bet");
     inbet_fp = pibet.string();
+
+    fs::path pphen = filepath;
+    fs::path base  = out_dir;
+    base /= pphen.stem();
+    fs::path pmlma = base;
+    pmlma += ".mlma";
+    outmlma_fp = pmlma.string();
 }
 
 void Phenotype::set_output_filenames(const std::string out_dir) {
@@ -129,6 +138,33 @@ void Phenotype::set_output_filenames(const std::string out_dir) {
     outbet_fp = pbet.string();
     outcpn_fp = pcpn.string();
     outcsv_fp = pcsv.string();
+}
+
+// Input and output
+void Phenotype::open_prediction_files() {
+
+    check_mpi(MPI_File_open(MPI_COMM_WORLD,
+                            get_inbet_fp().c_str(),  
+                            MPI_MODE_RDONLY,
+                            MPI_INFO_NULL,
+                            get_inbet_fh()),
+              __LINE__, __FILE__);
+
+    check_mpi(MPI_File_open(MPI_COMM_WORLD,
+                            get_outmlma_fp().c_str(),  
+                            MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_EXCL,
+                            MPI_INFO_NULL,
+                            get_outmlma_fh()),
+              __LINE__, __FILE__);
+}
+
+void Phenotype::close_prediction_files() {
+    check_mpi(MPI_File_close(get_inbet_fh()), __LINE__, __FILE__);
+    check_mpi(MPI_File_close(get_outmlma_fh()), __LINE__, __FILE__);
+}
+
+void Phenotype::delete_output_prediction_files() {
+    MPI_File_delete(get_outmlma_fp().c_str(), MPI_INFO_NULL);
 }
 
 void Phenotype::open_output_files() {

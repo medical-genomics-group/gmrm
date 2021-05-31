@@ -63,7 +63,7 @@ SOC=1
 TPS=2
 NTASKS=`echo "$SOC * $TPS" | bc`
 echo NTASKS = $NTASKS with $SOC sockets and $TPS tasks per socket.
-CPT=4
+CPT=8
 
 export OMP_NUM_THREADS=$CPT
 #export OMP_DISPLAY_ENV="TRUE" 
