@@ -143,6 +143,7 @@ void Phenotype::set_output_filenames(const std::string out_dir) {
 // Input and output
 void Phenotype::open_prediction_files() {
 
+    printf("CHECK  : opening for RDONLY: %s\n", get_inbet_fp().c_str());
     check_mpi(MPI_File_open(MPI_COMM_WORLD,
                             get_inbet_fp().c_str(),  
                             MPI_MODE_RDONLY,
@@ -516,12 +517,16 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
             //    printf("marker %d: %20.15f +/- %20.15f, %20.15f / %20.15f\n", i, mave[i], msig[i], asum, bsum);
         }
 #else
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif 
         for (int i=0; i<M; i++) {
             size_t bedix = size_t(i) * size_t(mbytes);
             const unsigned char* bedm = &bed[bedix];
             double suma = 0.0;
             double sumb = 0.0;
             for (int j=0; j<im4; j++) {
+
                 for (int k=0; k<4; k++) {
                     suma += dotp_lut_a[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k];
                     sumb += dotp_lut_b[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k];
@@ -536,6 +541,7 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
                 }
             }
             msig[i] = 1.0 / sqrt(sumsqr / (double(phen.get_nonas()) - 1.0));
+            //printf("marker %8d: %20.15f +/- %20.15f\n", i, mave[i], msig[i]);
         }
 
 #endif

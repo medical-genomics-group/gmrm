@@ -61,8 +61,11 @@ void Bayes::predict() {
 
         double* beta_it = (double*) _mm_malloc(size_t(Mtot_) * sizeof(double), 32);
         check_malloc(beta_it, __LINE__, __FILE__);
+
+        uint start_iter = 0;
+        if (niter > 5) start_iter = niter - 5;
         
-        for (uint i=0; i<niter; i++) {
+        for (uint i=start_iter; i<niter; i++) {
             betoff
                 = sizeof(uint) // Mtot
                 + (sizeof(uint) + size_t(Mtot_) * sizeof(double)) * size_t(i)
@@ -74,6 +77,13 @@ void Bayes::predict() {
         
         for (int j=0; j<Mtot_;j++)
             beta_sum[j] /= double(niter);
+
+        fflush(stdout);
+        double t_1 = MPI_Wtime();
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (rank >= 0)
+            printf("INFO   : intermediate time 1 = %.2f seconds.\n", t_1 - ts);
+
 
         double* g_k = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
         check_malloc(g_k, __LINE__, __FILE__);
@@ -105,10 +115,17 @@ void Bayes::predict() {
             for (int j=0; j<im4; j++) {
                 for (int k=0; k<4; k++) {
                     double val = (dotp_lut_a[bedm[j] * 4 + k] - mave) * dotp_lut_b[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k] * msig;
+#pragma omp atomic update
                     g_k[j*4+k] += val * beta_sum[mglo];
                 }
             }
         }
+
+        fflush(stdout);
+        double t_2 = MPI_Wtime();
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (rank >= 0)
+            printf("INFO   : intermediate time 2 = %.2f seconds.\n", t_2 - t_1);
 
         double* g = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
         check_malloc(g, __LINE__, __FILE__);
@@ -130,12 +147,24 @@ void Bayes::predict() {
         for (int i=0; i<N; i++)
             sigma += y_k[i] * y_k[i];
         sigma /= phen.get_nonas();
-        //printf("r: %d sigma = %20.15f\n", rank, sigma);
-       
+        printf("### r: %d sigma = %20.15f\n", rank, sigma);
+
+        MPI_File* mlma_fh = phen.get_outmlma_fh();
+
+        double* Beta  = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
+        check_malloc(Beta, __LINE__, __FILE__);
+        double* Tdist = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
+        check_malloc(Tdist, __LINE__, __FILE__);
+        double* Se    = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
+        check_malloc(Se, __LINE__, __FILE__);
+        double* Pval  = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
+        check_malloc(Pval, __LINE__, __FILE__);
+
+        
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static)
+#pragma omp parallel for schedule(static) default(none) shared(phen, dotp_lut_a, dotp_lut_b, na_lut, sigma, y_k, Beta, Tdist, Se, Pval)
 #endif  
-        for (int mrki=0; mrki<Mm; mrki++) {
+        for (int mrki=0; mrki<M; mrki++) {
 
             // Global index in current .bim
             int mglo = S + mrki;
@@ -171,23 +200,66 @@ void Bayes::predict() {
             double tdist = xty / sqrt(sigma * xtx);
             double se    = beta / tdist;
             double pval  = 1.0 - boost::math::gamma_p(0.5, tdist * tdist * 0.5);
-            
+
+            Beta[mrki]  = beta;
+            Tdist[mrki] = tdist;
+            Se[mrki]    = se;
+            Pval[mrki]  = pval;
+      
             //if (mrki < 5) {
             //    printf("r: %3d  m: %8d %8d (%5s) %8d  beta=%20.15f  se=%20.15f  tdist=%20.15f pval=%20.15f   xtx=%10.1f xty=%15.6f\n", rank, mrki, mglo, id.c_str(), rmglo, beta, se, tdist, pval, xtx, xty);
             //}
-
-            char buff[LENBUF];
-            int cx = snprintf(buff, LENBUF, "%20s %8d %8d %20.15f %20.15f %20.15f %20.15f\n", id.c_str(), mglo, rmglo, beta, se, tdist, pval);
-            assert(cx >= 0 && cx < LENBUF);
-
-            MPI_Offset offset = mglo * strlen(buff);
-            check_mpi(MPI_File_write_at(*phen.get_outmlma_fh(),
-                                        offset, &buff, strlen(buff), MPI_CHAR, &status),
-                      __LINE__, __FILE__);
         }
 
+        fflush(stdout);
+        double t_3 = MPI_Wtime();
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (rank >= 0)
+            printf("INFO   : intermediate time 3 = %.2f seconds.\n", t_3 - t_2);
+
+
+        const int LLEN = 123;
+        char* todump  = (char*) _mm_malloc(size_t(LLEN) * size_t(M) * sizeof(char), 32);
+        check_malloc(todump, __LINE__, __FILE__);
+        
+        char buff[LENBUF];
+        for (int mrki=0; mrki<M; mrki++) {
+            int mglo = S + mrki;
+            std::string id = rsid.at(mglo);
+            if (m_refrsid.find(id) == m_refrsid.end()) { continue; }
+            int rmglo = m_refrsid.find(id)->second;
+            int cx = snprintf(&todump[mrki * LLEN], LENBUF, "%20s %8d %8d %20.15f %20.15f %20.15f %20.15f\n",
+                              id.c_str(), mglo, rmglo, Beta[mrki], Tdist[mrki], Se[mrki], Pval[mrki]);
+        }
+
+        MPI_Offset offset = size_t(S) * size_t(LLEN);
+        check_mpi(MPI_File_write_at(*mlma_fh,
+                                    offset, todump, strlen(todump), MPI_CHAR, &status),
+                  __LINE__, __FILE__);
+
+            /*if (cx >= 0 && cx < LENBUF) {
+              MPI_Offset offset = size_t(mglo) * size_t(strlen(buff));
+                check_mpi(MPI_File_write_at(*mlma_fh,
+                                            offset, &buff, strlen(buff), MPI_CHAR, &status),
+                          __LINE__, __FILE__);
+            } else {
+                exit(1);
+                }*/
+        
+
+        fflush(stdout);
+        double t_4 = MPI_Wtime();
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (rank >= 0)
+            printf("INFO   : intermediate time 4 = %.2f seconds.\n", t_4 - t_3);
+
+        MPI_Barrier(MPI_COMM_WORLD);
         phen.close_prediction_files();
 
+        _mm_free(Beta);
+        _mm_free(Tdist);
+        _mm_free(Se);
+        _mm_free(Pval);
         _mm_free(beta_sum);
         _mm_free(beta_it);
         _mm_free(g_k);
@@ -785,6 +857,8 @@ void Bayes::check_processing_setup() {
 
 void Bayes::load_genotype() {
 
+    double ts = MPI_Wtime();
+    
     MPI_File bedfh;
     const std::string bedfp = opt.get_bed_file();
     check_mpi(MPI_File_open(MPI_COMM_WORLD, bedfp.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &bedfh),  __LINE__, __FILE__);
@@ -808,6 +882,12 @@ void Bayes::load_genotype() {
     //@@@MPI_Barrier(MPI_COMM_WORLD);
 
     check_mpi(MPI_File_close(&bedfh), __LINE__, __FILE__);
+
+    double te = MPI_Wtime();
+    MPI_Barrier(MPI_COMM_WORLD);
+    if (rank >= 0)
+        printf("INFO   : time to load genotype data = %.2f seconds.\n", te - ts);
+
 }
 
 
