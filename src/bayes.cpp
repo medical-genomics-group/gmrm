@@ -63,7 +63,8 @@ void Bayes::predict() {
         check_malloc(beta_it, __LINE__, __FILE__);
 
         uint start_iter = 0;
-        //if (niter > 5) start_iter = niter - 5;
+        //EO: use this one to speed up testing (avoids to read the entire bet history)
+        //if (niter > 3) start_iter = niter - 3;
         
         for (uint i=start_iter; i<niter; i++) {
             betoff
@@ -217,36 +218,43 @@ void Bayes::predict() {
         if (rank >= 0)
             printf("INFO   : intermediate time 3 = %.2f seconds.\n", t_3 - t_2);
 
-
-        const int LLEN = 123;
+       
+        const int LLEN = 123 + 1;
         char* todump  = (char*) _mm_malloc(size_t(LLEN) * size_t(M) * sizeof(char), 32);
         check_malloc(todump, __LINE__, __FILE__);
-        
-        char buff[LENBUF];
+
+        int n_rem = 0;
         for (int mrki=0; mrki<M; mrki++) {
             int mglo = S + mrki;
             std::string id = rsid.at(mglo);
-            if (m_refrsid.find(id) == m_refrsid.end()) { continue; }
+            if (m_refrsid.find(id) == m_refrsid.end()) {
+                //|| id.compare("rs12562034") == 0m|| id.compare("rs188466450") == 0)
+                printf("WARNING: marker id %s excluded -- no match\n", id.c_str());
+                n_rem++;
+                continue;
+            }
             int rmglo = m_refrsid.find(id)->second;
-            int cx = snprintf(&todump[mrki * LLEN], LENBUF, "%20s %8d %8d %20.15f %20.15f %20.15f %20.15f\n",
+            int cx = snprintf(&todump[(mrki - n_rem) * (LLEN - 1)], LLEN, "%20s %8d %8d %20.15f %20.15f %20.15f %20.15f\n",
                               id.c_str(), mglo, rmglo, Beta[mrki], Tdist[mrki], Se[mrki], Pval[mrki]);
+            assert(cx >= 0 && cx < LLEN);
         }
 
-        MPI_Offset offset = size_t(S) * size_t(LLEN);
-        check_mpi(MPI_File_write_at(*mlma_fh,
-                                    offset, todump, strlen(todump), MPI_CHAR, &status),
-                  __LINE__, __FILE__);
+        // Collect numbers of markers to print in each task
+        int mp = M - n_rem;
+        int* mps = (int*) malloc(nranks * sizeof(int));
+        check_mpi(MPI_Allgather(&mp, 1, MPI_INTEGER, mps, 1, MPI_INTEGER, MPI_COMM_WORLD), __LINE__, __FILE__);
 
-            /*if (cx >= 0 && cx < LENBUF) {
-              MPI_Offset offset = size_t(mglo) * size_t(strlen(buff));
-                check_mpi(MPI_File_write_at(*mlma_fh,
-                                            offset, &buff, strlen(buff), MPI_CHAR, &status),
-                          __LINE__, __FILE__);
-            } else {
-                exit(1);
-                }*/
+        int ps = 0;
+        for (int i=0; i<rank; i++) { ps += mps[i]; }
         
-
+        MPI_Offset offset = size_t(ps) * size_t(LLEN-1);
+        check_mpi(MPI_File_write_at(*mlma_fh,
+                                    offset, todump, size_t(LLEN-1) * size_t(mp), MPI_CHAR, &status),
+                  __LINE__, __FILE__);
+        
+        _mm_free(todump);
+        
+        
         fflush(stdout);
         double t_4 = MPI_Wtime();
         MPI_Barrier(MPI_COMM_WORLD);
@@ -254,8 +262,10 @@ void Bayes::predict() {
             printf("INFO   : intermediate time 4 = %.2f seconds.\n", t_4 - t_3);
 
         MPI_Barrier(MPI_COMM_WORLD);
+        
         phen.close_prediction_files();
 
+       
         _mm_free(Beta);
         _mm_free(Tdist);
         _mm_free(Se);
