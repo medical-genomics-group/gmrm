@@ -63,7 +63,7 @@ void Bayes::predict() {
         check_malloc(beta_it, __LINE__, __FILE__);
 
         uint start_iter = 0;
-        if (niter > 5) start_iter = niter - 5;
+        //if (niter > 5) start_iter = niter - 5;
         
         for (uint i=start_iter; i<niter; i++) {
             betoff
