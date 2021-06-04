@@ -143,7 +143,6 @@ void Phenotype::set_output_filenames(const std::string out_dir) {
 // Input and output
 void Phenotype::open_prediction_files() {
 
-    printf("CHECK  : opening for RDONLY: %s\n", get_inbet_fp().c_str());
     check_mpi(MPI_File_open(MPI_COMM_WORLD,
                             get_inbet_fp().c_str(),  
                             MPI_MODE_RDONLY,

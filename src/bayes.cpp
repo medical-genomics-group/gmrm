@@ -93,7 +93,7 @@ void Bayes::predict() {
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
 #endif 
-        for (int mrki=0; mrki<Mm; mrki++) {
+        for (int mrki=0; mrki<M; mrki++) {
 
             // Get rsid from current 
             int mglo = S + mrki;
@@ -288,9 +288,10 @@ void Bayes::predict() {
 //
 void Bayes::cross_bim_files() {
 
-    printf("INFO   : bim file:     %s\n", opt.get_bim_file().c_str());
-    printf("INFO   : ref bim file: %s\n", opt.get_ref_bim_file().c_str());
-    
+    if (rank == 0) {
+        printf("INFO   : bim file:     %s\n", opt.get_bim_file().c_str());
+        printf("INFO   : ref bim file: %s\n", opt.get_ref_bim_file().c_str());
+    }
     std::ifstream in(opt.get_bim_file().c_str());
     if (!in) throw ("Error: can not open the file [" + opt.get_bim_file() + "] to read.");
     std::string   id, allele1, allele2;
