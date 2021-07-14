@@ -1,12 +1,12 @@
-# ardyh
+# gmrm
 
 
 
 ## Compilation 
 
 ```
-git clone https://github.com/medical-genomics-group/ardyh.git
-cd ardyh
+git clone https://github.com/medical-genomics-group/gmrm.git
+cd gmrm
 ```
 
 Then, assuming a standard HPC environment, e.g.
@@ -29,7 +29,7 @@ Edit the Makefile if necessary to fit your environment.
 
 ## Running
 
-Assuming Slurm as job scheduler, create a file `sbatch_ardyh.sh` along these lines:
+Assuming Slurm as job scheduler, create a file `sbatch_gmrm.sh` along these lines:
 
 ```
 #!/bin/bash
@@ -41,7 +41,7 @@ Assuming Slurm as job scheduler, create a file `sbatch_ardyh.sh` along these lin
 
 module load gcc mvapich2 boost
 
-srun $ardyh/bin/ardyh_g \
+srun $gmrm/bin/gmrm_g \
 --bed-file /path/to/file.bed \
 --dim-file /path/to/file.dim \
 --phen-files /path/to/phen1.phen,/path/to/phen2.phen \
@@ -57,7 +57,7 @@ srun $ardyh/bin/ardyh_g \
 
 Then submit it:
 
-`sbatch sbatch_ardyh.sh`
+`sbatch sbatch_gmrm.sh`
 
 
 
