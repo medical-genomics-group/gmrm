@@ -1,4 +1,4 @@
-## Data files are provided here as examples of how to run the software 
+## Data files are provided here as an example of how to run the software 
 
 The plink test.bed/.bim/.fam files and two corresponding phenotypes
 test1.phen and test2.phen were generated in R using the script data_sim.R
@@ -9,4 +9,7 @@ size and the number of markers seperated by a space: test.dim
 The group-index test.gri and group-mixture test.grm files allocate all 
 markers to a single group with four mixture components
 
-These file are then used in the [Workflow](https://github.com/medical-genomics-group/gmrm/wiki/Workflow) prsented on the wiki page.
+
+These files are then used in the Workflow section of the wiki page: 
+
+https://github.com/medical-genomics-group/gmrm/wiki/Workflow
