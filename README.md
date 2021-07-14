@@ -82,7 +82,7 @@ Then submit it:
 
 ## Considerations on implementing multi-traits processing
 
-1. Because identical results are expected for a given phenotype whether it is processed alone or in multi-traits mode, we had to decouple the shuffling of the markers from the pseudo-random number generator (PRNG) used to sample distributions. This is imposed by the fact that we want to process the markers against all phenotypes in the same order on each iteration, in order to optimize the synchronization between tasks if a marker triggers an update on several phenotypes. Hence the option --mimic-hydra to reproduce the results from *hydra*.
+1. Because identical results are expected for a given phenotype whether it is processed alone or in multi-traits mode, we had to decouple the shuffling of the markers from the pseudo-random number generator (PRNG) used to sample distributions. This is imposed by the fact that we want to process the markers against all phenotypes in the same order on each iteration, in order to optimize the synchronization between tasks if a marker triggers an update on several phenotypes. Hence the option --mimic-hydra to reproduce the results from our original *hydra* software: https://github.com/medical-genomics-group/hydra.
 2. The PRNG for the shuffling of the markers is seeded with --seed + rank.
 3. The PRNG used for sampling distributions for each phenotype is seeded with --seed + (rank + 1)  x 1000.
 4. The markers' statistics are phenotype dependent (due to the NAs). A mask is applied using a lookup tables with 64 x 4 entries. Note that mostly the same information will be reused (0b000011111) as phenotypes contains few NAs.
