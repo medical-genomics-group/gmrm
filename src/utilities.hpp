@@ -13,6 +13,7 @@ int check_int_overflow(const size_t n, const int linenumber, const char* filenam
 double round_dp(double in);
 
 //EO: this to allow reduction on avx256 pd4 datatype with OpenMP
+#ifdef _OPENMP
 #pragma omp declare reduction \
     (addpd4:__m256d:omp_out+=omp_in) \
     initializer(omp_priv=_mm256_setzero_pd())
@@ -20,7 +21,7 @@ double round_dp(double in);
 #pragma omp declare reduction \
     (addpd8:__m512d:omp_out+=omp_in) \
     initializer(omp_priv=_mm512_setzero_pd())
-
+#endif
 
 // MPI_File_read_at_all handling count argument larger than INT_MAX
 //

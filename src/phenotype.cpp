@@ -237,7 +237,9 @@ void Phenotype::update_pi_est_dirichlet(const int g) {
 double Phenotype::epsilon_sum() {
     double* epsilon = get_epsilon();
     double sum = 0.0;
+#ifdef _OPENMP
 #pragma omp parallel for simd aligned(epsilon:32) reduction(+:sum)
+#endif
     for (int i=0; i<N; i++) {
         sum += epsilon[i];
     }
@@ -247,7 +249,9 @@ double Phenotype::epsilon_sum() {
 double Phenotype::epsilon_sumsqr() {
     double* epsilon = get_epsilon();
     double sumsqr = 0.0;
+#ifdef _OPENMP
 #pragma omp parallel for simd aligned(epsilon:32) reduction(+:sumsqr)
+#endif
     for (int i=0; i<N; i++) {
         sumsqr += epsilon[i] * epsilon[i];
     }

@@ -116,7 +116,9 @@ void Bayes::predict() {
             for (int j=0; j<im4; j++) {
                 for (int k=0; k<4; k++) {
                     double val = (dotp_lut_a[bedm[j] * 4 + k] - mave) * dotp_lut_b[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k] * msig;
+#ifdef _OPENMP
 #pragma omp atomic update
+#endif
                     g_k[j*4+k] += val * beta_sum[mglo];
                 }
             }
