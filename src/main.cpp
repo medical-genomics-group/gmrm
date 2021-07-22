@@ -12,7 +12,11 @@ int main(int argc, char *argv[]) {
     const Options    opt(argc, argv);
     const Dimensions dims(opt);
     BayesRR brr(opt, dims);
-    brr.process();
+    if (opt.predict()) {
+        brr.predict();
+    } else {
+        brr.process();
+    }
 
     MPI_Finalize();
 

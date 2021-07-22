@@ -8,8 +8,313 @@
 #include "bayes.hpp"
 #include "utilities.hpp"
 #include "dotp_lut.hpp"
+#include "na_lut.hpp"
 #include "xfiles.hpp"
+#include <boost/math/special_functions/gamma.hpp>
 
+
+void Bayes::predict() {
+
+    MPI_Barrier(MPI_COMM_WORLD);
+    double ts = MPI_Wtime();
+
+    check_openmp();
+
+    MPI_Status status;
+    MPI_Offset file_size = 0;
+    MPI_File*  fh;
+
+    cross_bim_files();
+
+    int pidx = 0;
+    for (auto& phen : pmgr.get_phens()) {
+        pidx += 1;
+
+        phen.delete_output_prediction_files();
+        phen.open_prediction_files();
+
+        const std::vector<unsigned char> mask4 = phen.get_mask4();
+        const int im4 = phen.get_im4();
+
+        fh = phen.get_inbet_fh();
+        check_mpi(MPI_File_get_size(*fh, &file_size), __LINE__, __FILE__);
+        //printf("file_size = %u B\n", file_size);
+    
+        // First element of the .bet is the total number of processed markers
+        // Then: iteration (uint) beta (double) for all markers
+        uint Mtot_ = 0;
+        MPI_Offset betoff = size_t(0);
+        check_mpi(MPI_File_read_at_all(*fh, betoff, &Mtot_, 1, MPI_UNSIGNED, &status), __LINE__, __FILE__);
+        if (Mtot_ != m_refrsid.size()) {
+            printf("Mismatch between expected and Mtot read from .bet file: %d vs %d\n", rsid.size(), Mtot_);
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+
+        assert((file_size - sizeof(uint)) % (Mtot_ * sizeof(double) + sizeof(uint)) == 0);
+        uint niter = (file_size - sizeof(uint)) / (Mtot_ * sizeof(double) + sizeof(uint));
+        if (rank == 0)
+            printf("INFO   : Number of recorded iterations in .bet file: %u\n", niter);
+
+        double* beta_sum = (double*) _mm_malloc(size_t(Mtot_) * sizeof(double), 32);
+        check_malloc(beta_sum, __LINE__, __FILE__);
+        for (int i=0; i<Mtot_; i++) beta_sum[i] = 0.0;
+
+        double* beta_it = (double*) _mm_malloc(size_t(Mtot_) * sizeof(double), 32);
+        check_malloc(beta_it, __LINE__, __FILE__);
+
+        uint start_iter = 0;
+        //EO: use this one to speed up testing (avoids to read the entire bet history)
+        //if (niter > 3) start_iter = niter - 3;
+        
+        for (uint i=start_iter; i<niter; i++) {
+            betoff
+                = sizeof(uint) // Mtot
+                + (sizeof(uint) + size_t(Mtot_) * sizeof(double)) * size_t(i)
+                + sizeof(uint);
+            check_mpi(MPI_File_read_at_all(*fh, betoff, beta_it, Mtot_, MPI_DOUBLE, &status), __LINE__, __FILE__);
+            for (int j=0; j<Mtot_;j++)
+                beta_sum[j] += beta_it[j];
+        }
+        
+        for (int j=0; j<Mtot_;j++)
+            beta_sum[j] /= double(niter);
+
+        fflush(stdout);
+        double t_1 = MPI_Wtime();
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (rank >= 0)
+            printf("INFO   : intermediate time 1 = %.2f seconds.\n", t_1 - ts);
+
+
+        double* g_k = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+        check_malloc(g_k, __LINE__, __FILE__);
+        for (int i=0; i<im4*4; i++) g_k[i] = 0.0;
+
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static)
+#endif 
+        for (int mrki=0; mrki<M; mrki++) {
+
+            // Get rsid from current 
+            int mglo = S + mrki;
+            std::string id = rsid.at(mglo);
+
+            // Skip markers with no corresponding rsid in reference bim file
+            if (m_refrsid.find(id) == m_refrsid.end()) {
+                //printf("%d -> %d = %s not found in reference bim\n", mrki, mglo, id.c_str());
+                continue;
+            }
+
+            int rmglo = m_refrsid.find(id)->second; // global marker index in reference bed
+
+            size_t bedix = size_t(mrki) * size_t(mbytes);
+            const unsigned char* bedm = &bed_data[bedix];
+
+            double mave = phen.get_marker_ave(mrki);
+            double msig = phen.get_marker_sig(mrki);
+
+            for (int j=0; j<im4; j++) {
+                for (int k=0; k<4; k++) {
+                    double val = (dotp_lut_a[bedm[j] * 4 + k] - mave) * dotp_lut_b[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k] * msig;
+#pragma omp atomic update
+                    g_k[j*4+k] += val * beta_sum[mglo];
+                }
+            }
+        }
+
+        fflush(stdout);
+        double t_2 = MPI_Wtime();
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (rank >= 0)
+            printf("INFO   : intermediate time 2 = %.2f seconds.\n", t_2 - t_1);
+
+        double* g = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+        check_malloc(g, __LINE__, __FILE__);
+
+        check_mpi(MPI_Allreduce(g_k, g, im4*4, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD), __LINE__, __FILE__);
+ 
+        double* y_k = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+        check_malloc(y_k, __LINE__, __FILE__);
+
+        phen.get_centered_and_scaled_y(y_k);
+
+        //EO: already done when computing original epsilon when reading .phen
+        // phen.set_nas_to_zero(y_k, im4*4);
+        // NAs are 0.0 in all, so should be safe
+        for (int i=0; i<im4*4; i++)
+            y_k[i] -= (g[i] - g_k[i]);
+
+        double sigma = 0.0;
+        for (int i=0; i<N; i++)
+            sigma += y_k[i] * y_k[i];
+        sigma /= phen.get_nonas();
+        printf("### r: %d sigma = %20.15f\n", rank, sigma);
+
+        MPI_File* mlma_fh = phen.get_outmlma_fh();
+
+        double* Beta  = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
+        check_malloc(Beta, __LINE__, __FILE__);
+        double* Tdist = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
+        check_malloc(Tdist, __LINE__, __FILE__);
+        double* Se    = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
+        check_malloc(Se, __LINE__, __FILE__);
+        double* Pval  = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
+        check_malloc(Pval, __LINE__, __FILE__);
+
+        
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) default(none) shared(phen, dotp_lut_a, dotp_lut_b, na_lut, sigma, y_k, Beta, Tdist, Se, Pval)
+#endif  
+        for (int mrki=0; mrki<M; mrki++) {
+
+            // Global index in current .bim
+            int mglo = S + mrki;
+            std::string id = rsid.at(mglo);
+
+            // Skip markers with no corresponding rsid in reference bim file
+            if (m_refrsid.find(id) == m_refrsid.end()) {
+                //printf("%d -> %d = %s not found in reference bim\n", mrki, mglo, id.c_str());
+                continue;
+            }
+
+            // Global marker index in reference bed
+            int rmglo = m_refrsid.find(id)->second;
+
+            size_t bedix = size_t(mrki) * size_t(mbytes);
+            const unsigned char* bedm = &bed_data[bedix];
+
+            double mave = phen.get_marker_ave(mrki);
+            double msig = phen.get_marker_sig(mrki);
+
+            double xtx = 0.0;
+            double xty = 0.0;
+            double chk = 0.0;
+            for (int j=0; j<im4; j++) {
+                for (int k=0; k<4; k++) {
+                    double val = dotp_lut_a[bedm[j] * 4 + k] * dotp_lut_b[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k];
+                    xtx += val * val;
+                    xty += val * y_k[j*4 + k];
+                }
+            }
+
+            double beta  = xty / xtx;
+            double tdist = xty / sqrt(sigma * xtx);
+            double se    = beta / tdist;
+            double pval  = 1.0 - boost::math::gamma_p(0.5, tdist * tdist * 0.5);
+
+            Beta[mrki]  = beta;
+            Tdist[mrki] = tdist;
+            Se[mrki]    = se;
+            Pval[mrki]  = pval;
+      
+            //if (mrki < 5) {
+            //    printf("r: %3d  m: %8d %8d (%5s) %8d  beta=%20.15f  se=%20.15f  tdist=%20.15f pval=%20.15f   xtx=%10.1f xty=%15.6f\n", rank, mrki, mglo, id.c_str(), rmglo, beta, se, tdist, pval, xtx, xty);
+            //}
+        }
+
+        fflush(stdout);
+        double t_3 = MPI_Wtime();
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (rank >= 0)
+            printf("INFO   : intermediate time 3 = %.2f seconds.\n", t_3 - t_2);
+
+       
+        const int LLEN = 123 + 1;
+        char* todump  = (char*) _mm_malloc(size_t(LLEN) * size_t(M) * sizeof(char), 32);
+        check_malloc(todump, __LINE__, __FILE__);
+
+        int n_rem = 0;
+        for (int mrki=0; mrki<M; mrki++) {
+            int mglo = S + mrki;
+            std::string id = rsid.at(mglo);
+            if (m_refrsid.find(id) == m_refrsid.end()) {
+                //|| id.compare("rs12562034") == 0m|| id.compare("rs188466450") == 0)
+                printf("WARNING: marker id %s excluded -- no match\n", id.c_str());
+                n_rem++;
+                continue;
+            }
+            int rmglo = m_refrsid.find(id)->second;
+            int cx = snprintf(&todump[(mrki - n_rem) * (LLEN - 1)], LLEN, "%20s %8d %8d %20.15f %20.15f %20.15f %20.15f\n",
+                              id.c_str(), mglo, rmglo, Beta[mrki], Tdist[mrki], Se[mrki], Pval[mrki]);
+            assert(cx >= 0 && cx < LLEN);
+        }
+
+        // Collect numbers of markers to print in each task
+        int mp = M - n_rem;
+        int* mps = (int*) malloc(nranks * sizeof(int));
+        check_mpi(MPI_Allgather(&mp, 1, MPI_INTEGER, mps, 1, MPI_INTEGER, MPI_COMM_WORLD), __LINE__, __FILE__);
+
+        int ps = 0;
+        for (int i=0; i<rank; i++) { ps += mps[i]; }
+        
+        MPI_Offset offset = size_t(ps) * size_t(LLEN-1);
+        check_mpi(MPI_File_write_at(*mlma_fh,
+                                    offset, todump, size_t(LLEN-1) * size_t(mp), MPI_CHAR, &status),
+                  __LINE__, __FILE__);
+        
+        _mm_free(todump);
+        
+        
+        fflush(stdout);
+        double t_4 = MPI_Wtime();
+        MPI_Barrier(MPI_COMM_WORLD);
+        if (rank >= 0)
+            printf("INFO   : intermediate time 4 = %.2f seconds.\n", t_4 - t_3);
+
+        MPI_Barrier(MPI_COMM_WORLD);
+        
+        phen.close_prediction_files();
+
+       
+        _mm_free(Beta);
+        _mm_free(Tdist);
+        _mm_free(Se);
+        _mm_free(Pval);
+        _mm_free(beta_sum);
+        _mm_free(beta_it);
+        _mm_free(g_k);
+        _mm_free(g);
+        _mm_free(y_k);
+    }
+
+    fflush(stdout);
+    double te = MPI_Wtime();
+    MPI_Barrier(MPI_COMM_WORLD);
+    if (rank == 0)
+        printf("INFO   : Time to compute the predictions: %.2f seconds.\n", te - ts);
+}
+
+// EO: bim_file - I assume that the row number is the index
+//
+void Bayes::cross_bim_files() {
+
+    if (rank == 0) {
+        printf("INFO   : bim file:     %s\n", opt.get_bim_file().c_str());
+        printf("INFO   : ref bim file: %s\n", opt.get_ref_bim_file().c_str());
+    }
+    std::ifstream in(opt.get_bim_file().c_str());
+    if (!in) throw ("Error: can not open the file [" + opt.get_bim_file() + "] to read.");
+    std::string   id, allele1, allele2;
+    unsigned chr, physPos, idx = 0;
+    float    genPos;
+    while (in >> chr >> id >> genPos >> physPos >> allele1 >> allele2) {
+        rsid.push_back(id);
+    }
+    in.close();
+    int nrsid = rsid.size();
+    if (rank == 0)
+        printf("INFO   : found %d ids in bim file\n", nrsid);
+
+    std::ifstream refin(opt.get_ref_bim_file().c_str());
+    if (!refin) throw ("Error: can not open the file [" + opt.get_ref_bim_file() + "] to read.");
+    idx = 0;
+    while (refin >> chr >> id >> genPos >> physPos >> allele1 >> allele2) {        
+        m_refrsid[id] = idx++;
+    }
+    refin.close();
+    if (rank == 0)
+        printf("INFO   : found %d ids in reference bim file\n", idx);
+}
 
 void Bayes::process() {
 
@@ -471,9 +776,10 @@ double Bayes::dot_product(const int mloc, double* __restrict__ phen, const doubl
 void Bayes::setup_processing() {
 
     mbytes = (N %  4) ? (size_t) N /  4 + 1 : (size_t) N /  4;
-
     load_genotype();
+
     pmgr.read_phen_files(opt, get_N(), get_M());
+
     check_processing_setup();
 
     if (rank == 0)
@@ -486,6 +792,8 @@ void Bayes::setup_processing() {
     double te = MPI_Wtime();
     if (rank == 0)
         printf("INFO   : Time to compute the markers' statistics: %.2f seconds.\n", te - ts);
+
+    if (opt.predict()) return;
 
     for (auto& phen : pmgr.get_phens()) {
         phen.set_prng_m((unsigned int)(opt.get_seed() + (rank + 0)));
@@ -560,6 +868,8 @@ void Bayes::check_processing_setup() {
 
 void Bayes::load_genotype() {
 
+    double ts = MPI_Wtime();
+    
     MPI_File bedfh;
     const std::string bedfp = opt.get_bed_file();
     check_mpi(MPI_File_open(MPI_COMM_WORLD, bedfp.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &bedfh),  __LINE__, __FILE__);
@@ -568,7 +878,7 @@ void Bayes::load_genotype() {
 
     bed_data = (unsigned char*)_mm_malloc(size_bytes, 64);
     check_malloc(bed_data, __LINE__, __FILE__);
-    printf("rank %d allocation %zu bytes (%.3f GB) for the raw data. Marker start at S = %d\n", rank, size_bytes, double(size_bytes) / 1.0E9, S);
+    printf("INFO   : rank %4d has allocated %zu bytes (%.3f GB) for raw data.\n", rank, size_bytes, double(size_bytes) / 1.0E9);
 
     // Offset to section of bed file to be processed by task
     MPI_Offset offset = size_t(3) + size_t(S) * size_t(mbytes) * sizeof(unsigned char);
@@ -583,6 +893,12 @@ void Bayes::load_genotype() {
     //@@@MPI_Barrier(MPI_COMM_WORLD);
 
     check_mpi(MPI_File_close(&bedfh), __LINE__, __FILE__);
+
+    double te = MPI_Wtime();
+    MPI_Barrier(MPI_COMM_WORLD);
+    if (rank >= 0)
+        printf("INFO   : time to load genotype data = %.2f seconds.\n", te - ts);
+
 }
 
 
@@ -606,8 +922,7 @@ void Bayes::set_block_of_markers() {
     M = len[rank];
     S = start[rank];
     
-    std::cout << "rank " << rank << " has " << M << " markers over Mt = " << Mt << ", Mm = " << Mm << ", starting at S = " << S << std::endl;
-
+    printf("INFO   : rank %4d has %d markers over tot Mt = %d, max Mm = %d, starting at S = %d\n", rank, M, Mt, Mm, S);
     //@todo: mpi check sum over tasks == Mt
 }
 

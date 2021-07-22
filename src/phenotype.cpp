@@ -1,7 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <regex>
-#include <cmath>
+#include <math.h>
 #include <immintrin.h>
 #include <mpi.h>
 #include "utilities.hpp"
@@ -22,32 +22,36 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     im4(N%4 == 0 ? N/4 : N/4+1),
     K(opt.get_nmixtures()),
     G(opt.get_ngroups()) {
-
+    
     mave = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
     check_malloc(mave, __LINE__, __FILE__);
     msig = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
     check_malloc(msig, __LINE__, __FILE__);
     epsilon_ = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
     check_malloc(epsilon_, __LINE__, __FILE__);
-    cass = (int*) _mm_malloc(G * K * sizeof(int), 32);
-    check_malloc(cass, __LINE__, __FILE__);
+
+    if (!opt.predict()) {
+        cass = (int*) _mm_malloc(G * K * sizeof(int), 32);
+        check_malloc(cass, __LINE__, __FILE__);
     
-    betas.assign(M, 0.0);
-    acum.assign(M, 0.0);
-    muk.assign(K, 0.0);
-    denom.resize(K - 1);
-    logl.resize(K);
-    comp.assign(M, 0);
-    beta_sqn.resize(G);
-    m0.resize(G);
-    sigmag.resize(G);
+        betas.assign(M, 0.0);
+        acum.assign(M, 0.0);
+        muk.assign(K, 0.0);
+        denom.resize(K - 1);
+        logl.resize(K);
+        comp.assign(M, 0);
+        beta_sqn.resize(G);
+        m0.resize(G);
+        sigmag.resize(G);
 
-    dirich.clear();
-    for (int i=0; i<K; i++) dirich.push_back(1.0);
-
-    read_file(opt);
+        dirich.clear();
+        for (int i=0; i<K; i++) dirich.push_back(1.0);
+    } else {
+        set_prediction_filenames(opt.get_out_dir());
+    }
 
     set_output_filenames(opt.get_out_dir());
+    read_file(opt);
 }
 
 //copy ctor
@@ -55,6 +59,7 @@ Phenotype::Phenotype(const Phenotype& rhs) :
     dist_m(rhs.dist_m),
     dist_d(rhs.dist_d),
     filepath(rhs.filepath),
+    inbet_fp(rhs.inbet_fp),
     outbet_fp(rhs.outbet_fp),
     outcpn_fp(rhs.outcpn_fp),
     outcsv_fp(rhs.outcsv_fp),
@@ -98,11 +103,25 @@ Phenotype::Phenotype(const Phenotype& rhs) :
     check_malloc(cass, __LINE__, __FILE__);
 }
 
-int  Phenotype::get_m0_sum() {
+int Phenotype::get_m0_sum() {
     int sum = 0;
     for (int i=0; i<m0.size(); i++)
         sum += m0.at(i);
     return sum;
+}
+
+// Set input filenames based on input phen file (as per output)
+void Phenotype::set_prediction_filenames(const std::string out_dir) {
+    fs::path pibet = filepath;
+    pibet.replace_extension(".bet");
+    inbet_fp = pibet.string();
+
+    fs::path pphen = filepath;
+    fs::path base  = out_dir;
+    base /= pphen.stem();
+    fs::path pmlma = base;
+    pmlma += ".mlma";
+    outmlma_fp = pmlma.string();
 }
 
 void Phenotype::set_output_filenames(const std::string out_dir) {
@@ -119,6 +138,33 @@ void Phenotype::set_output_filenames(const std::string out_dir) {
     outbet_fp = pbet.string();
     outcpn_fp = pcpn.string();
     outcsv_fp = pcsv.string();
+}
+
+// Input and output
+void Phenotype::open_prediction_files() {
+
+    check_mpi(MPI_File_open(MPI_COMM_WORLD,
+                            get_inbet_fp().c_str(),  
+                            MPI_MODE_RDONLY,
+                            MPI_INFO_NULL,
+                            get_inbet_fh()),
+              __LINE__, __FILE__);
+
+    check_mpi(MPI_File_open(MPI_COMM_WORLD,
+                            get_outmlma_fp().c_str(),  
+                            MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_EXCL,
+                            MPI_INFO_NULL,
+                            get_outmlma_fh()),
+              __LINE__, __FILE__);
+}
+
+void Phenotype::close_prediction_files() {
+    check_mpi(MPI_File_close(get_inbet_fh()), __LINE__, __FILE__);
+    check_mpi(MPI_File_close(get_outmlma_fh()), __LINE__, __FILE__);
+}
+
+void Phenotype::delete_output_prediction_files() {
+    MPI_File_delete(get_outmlma_fp().c_str(), MPI_INFO_NULL);
 }
 
 void Phenotype::open_output_files() {
@@ -470,12 +516,16 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
             //    printf("marker %d: %20.15f +/- %20.15f, %20.15f / %20.15f\n", i, mave[i], msig[i], asum, bsum);
         }
 #else
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif 
         for (int i=0; i<M; i++) {
             size_t bedix = size_t(i) * size_t(mbytes);
             const unsigned char* bedm = &bed[bedix];
             double suma = 0.0;
             double sumb = 0.0;
             for (int j=0; j<im4; j++) {
+
                 for (int k=0; k<4; k++) {
                     suma += dotp_lut_a[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k];
                     sumb += dotp_lut_b[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k];
@@ -490,6 +540,7 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
                 }
             }
             msig[i] = 1.0 / sqrt(sumsqr / (double(phen.get_nonas()) - 1.0));
+            //printf("marker %8d: %20.15f +/- %20.15f\n", i, mave[i], msig[i]);
         }
 
 #endif
@@ -539,17 +590,21 @@ void Phenotype::read_file(const Options& opt) {
     if (infile.is_open()) {
         int line_n = 0;
         nonas = 0, nas = 0;
-        while (getline(infile, line)) {            
+        while (getline(infile, line)) {
+            //std::cout << line << std::endl;
             int m4 = line_n % 4;
             if (m4 == 0)  mask4.push_back(0b00001111);
 
             std::sregex_token_iterator first{line.begin(), line.end(), re, -1}, last;
             std::vector<std::string> tokens{first, last};
+
             if (tokens[2] == "NA") {
                 nas += 1;
-                data.push_back(nan(0));
-                if (opt.verbosity_level(3))
+                data.push_back(std::numeric_limits<double>::max());
+                if (opt.verbosity_level(2)) {
                     std::cout << " ... found NA on line " << line_n << ", m4 = " << m4 << " on byte " << int(line_n / 4) << std::endl;
+                    fflush(stdout);
+                }
                 mask4.at(int(line_n / 4)) &= ~(0b1 << m4);
             } else {
                 nonas += 1;
@@ -590,19 +645,18 @@ void Phenotype::read_file(const Options& opt) {
 
         double sqn = 0.0;
         for (int i=0; i<data.size(); i++) {
-            if (opt.verbosity_level(3) && i < 20)
+            if (opt.verbosity_level(3) && i < 10)
                 std::cout << data[i] - avg  << std::endl;
-            if (! isnan(data[i])) {
+            if (data[i] == std::numeric_limits<double>::max()) {
+                epsilon[i] = 0.0;
+            } else {
                 epsilon[i] = data[i] - avg;
                 sqn += epsilon[i] * epsilon[i];
-            } else {
-                epsilon[i] = 0.0;
             }
         }
         sqn = sqrt(double(nonas-1) / sqn);
         if (opt.verbosity_level(3))
             printf("phen sqn = %20.15f\n", sqn);
-
         for (int i=0; i<data.size(); i++)
             epsilon[i] *= sqn;
 
@@ -614,4 +668,17 @@ void Phenotype::read_file(const Options& opt) {
 
 void Phenotype::print_info() const {
     printf("INFO   : %s has %d NAs and %d non-NAs.\n", get_filepath().c_str(), nas, nonas);
+}
+
+void Phenotype::set_nas_to_zero(double* y, const int N) {
+    assert(N % 4 == 0);
+    for (int j=0; j<N/4; j++) {
+        for (int k=0; k<4; k++) {
+            if (na_lut[mask4[j] * 4 + k] == 0) {
+                printf("j = %d, k = %d\n", j, k);
+                printf("found NA on %d\n", na_lut[mask4[j] * 4 + k]);
+                y[j*4 + k] = 0.0;
+            }
+        }
+    }
 }
