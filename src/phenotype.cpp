@@ -22,7 +22,7 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     im4(N%4 == 0 ? N/4 : N/4+1),
     K(opt.get_nmixtures()),
     G(opt.get_ngroups()) {
-    
+
     mave = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
     check_malloc(mave, __LINE__, __FILE__);
     msig = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
@@ -33,7 +33,7 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     if (!opt.predict()) {
         cass = (int*) _mm_malloc(G * K * sizeof(int), 32);
         check_malloc(cass, __LINE__, __FILE__);
-    
+
         betas.assign(M, 0.0);
         acum.assign(M, 0.0);
         muk.assign(K, 0.0);
@@ -63,6 +63,7 @@ Phenotype::Phenotype(const Phenotype& rhs) :
     outbet_fp(rhs.outbet_fp),
     outcpn_fp(rhs.outcpn_fp),
     outcsv_fp(rhs.outcsv_fp),
+    outmlma_fp(rhs.outmlma_fp),
     nonas(rhs.nonas),
     nas(rhs.nas),
     im4(rhs.im4),
@@ -134,7 +135,7 @@ void Phenotype::set_output_filenames(const std::string out_dir) {
     pcpn += ".cpn";
     fs::path pcsv = base;
     pcsv += ".csv";
-    
+
     outbet_fp = pbet.string();
     outcpn_fp = pcpn.string();
     outcsv_fp = pcsv.string();
@@ -144,14 +145,15 @@ void Phenotype::set_output_filenames(const std::string out_dir) {
 void Phenotype::open_prediction_files() {
 
     check_mpi(MPI_File_open(MPI_COMM_WORLD,
-                            get_inbet_fp().c_str(),  
+                            get_inbet_fp().c_str(),
                             MPI_MODE_RDONLY,
                             MPI_INFO_NULL,
                             get_inbet_fh()),
               __LINE__, __FILE__);
 
+	std::cout << "fails to open " << get_outmlma_fp() << std::endl;
     check_mpi(MPI_File_open(MPI_COMM_WORLD,
-                            get_outmlma_fp().c_str(),  
+                            get_outmlma_fp().c_str(),
                             MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_EXCL,
                             MPI_INFO_NULL,
                             get_outmlma_fh()),
@@ -169,19 +171,19 @@ void Phenotype::delete_output_prediction_files() {
 
 void Phenotype::open_output_files() {
     check_mpi(MPI_File_open(MPI_COMM_WORLD,
-                            get_outbet_fp().c_str(),  
+                            get_outbet_fp().c_str(),
                             MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_EXCL,
                             MPI_INFO_NULL,
                             get_outbet_fh()),
               __LINE__, __FILE__);
     check_mpi(MPI_File_open(MPI_COMM_WORLD,
-                            get_outcpn_fp().c_str(),  
+                            get_outcpn_fp().c_str(),
                             MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_EXCL,
                             MPI_INFO_NULL,
                             get_outcpn_fh()),
               __LINE__, __FILE__);
     check_mpi(MPI_File_open(MPI_COMM_WORLD,
-                            get_outcsv_fp().c_str(),  
+                            get_outcsv_fp().c_str(),
                             MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_EXCL,
                             MPI_INFO_NULL,
                             get_outcsv_fh()),
@@ -189,9 +191,9 @@ void Phenotype::open_output_files() {
 }
 
 void Phenotype::close_output_files() {
-    check_mpi(MPI_File_close(get_outbet_fh()), __LINE__, __FILE__);    
-    check_mpi(MPI_File_close(get_outcpn_fh()), __LINE__, __FILE__);    
-    check_mpi(MPI_File_close(get_outcsv_fh()), __LINE__, __FILE__);    
+    check_mpi(MPI_File_close(get_outbet_fh()), __LINE__, __FILE__);
+    check_mpi(MPI_File_close(get_outcpn_fh()), __LINE__, __FILE__);
+    check_mpi(MPI_File_close(get_outcsv_fh()), __LINE__, __FILE__);
 }
 
 void Phenotype::delete_output_files() {
@@ -275,7 +277,7 @@ double Phenotype::sample_norm_rng(const double a, const double b) {
 }
 
 double Phenotype::sample_norm_rng() {
-    //printf("sampling mu with epssum = %20.15f and sigmae = %20.15f; nonas = %d\n", epssum, sigmae, nonas);    
+    //printf("sampling mu with epssum = %20.15f and sigmae = %20.15f; nonas = %d\n", epssum, sigmae, nonas);
     return dist_d.norm_rng(epssum / double(nonas), get_sigmae() / double(nonas));
 }
 
@@ -340,7 +342,7 @@ void Phenotype::update_epsilon(const double* dbeta, const unsigned char* bed) {
 #endif
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
-#endif                              
+#endif
     for (int i=0; i<im4; i++) {
         __m256d luta  = _mm256_load_pd(&dotp_lut_ab[bed[i] * 8]);
         __m256d lutb  = _mm256_load_pd(&dotp_lut_ab[bed[i] * 8 + 4]);
@@ -354,7 +356,7 @@ void Phenotype::update_epsilon(const double* dbeta, const unsigned char* bed) {
 /*
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
-#endif                              
+#endif
     for (int i=0; i<im4; i++) {
         eps4  = _mm256_load_pd(&epsilon[i*4]);
         lutna = _mm256_load_pd(&na_lut[mask4[i] * 4]);
@@ -391,9 +393,9 @@ void Phenotype::update_epsilon(const double* dbeta, const unsigned char* bed) {
 }
 
 void Phenotype::offset_epsilon(const double offset) {
-    
+
     double* epsilon = get_epsilon();
-    
+
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
@@ -426,7 +428,7 @@ void Phenotype::update_epsilon_sum() {
 }
 */
 
-// Only depends on NAs 
+// Only depends on NAs
 void Phenotype::update_epsilon_sigma() {
     double* epsilon = get_epsilon();
 #ifdef MANVECT
@@ -481,7 +483,7 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
 #ifdef MANVECT
 #ifdef _OPENMP
 #pragma omp parallel for
-#endif 
+#endif
         for (int i=0; i<M; i++) {
             __m256d suma = _mm256_set1_pd(0.0);
             __m256d sumb = _mm256_set1_pd(0.0);
@@ -522,7 +524,7 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
 #else
 #ifdef _OPENMP
 #pragma omp parallel for
-#endif 
+#endif
         for (int i=0; i<M; i++) {
             size_t bedix = size_t(i) * size_t(mbytes);
             const unsigned char* bedm = &bed[bedix];
@@ -627,7 +629,7 @@ void Phenotype::read_file(const Options& opt) {
         infile.close();
 
         assert(nas + nonas == N);
-        
+
         // Set last bits to 0 if ninds % 4 != 0
         const int m4 = line_n % 4;
         if (m4 != 0) {
@@ -641,7 +643,7 @@ void Phenotype::read_file(const Options& opt) {
             //std::cout << "fatal: missing implementation" << std::endl;
             //exit(1);
         }
-        
+
         // Center and scale
         double avg = sum / double(nonas);
         if (opt.verbosity_level(3))
@@ -678,10 +680,10 @@ void Phenotype::set_nas_to_zero(double* y, const int N) {
     assert(N % 4 == 0);
     for (int j=0; j<N/4; j++) {
         for (int k=0; k<4; k++) {
-            if (na_lut[mask4[j] * 4 + k] == 0) {
-                printf("j = %d, k = %d\n", j, k);
-                printf("found NA on %d\n", na_lut[mask4[j] * 4 + k]);
-                y[j*4 + k] = 0.0;
+            if (na_lut[mask4[j] * 4 + k] == 0.0) {
+				assert(y[j*4 + k] == 0.0);
+                //printf("found NA on %d. Correct? %20.15f\n", j * 4 + k, y[j*4 + k]);
+                //y[j*4 + k] = 0.0;
             }
         }
     }
