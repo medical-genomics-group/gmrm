@@ -14,7 +14,7 @@ namespace fs = std::filesystem;
 
 // Function to parse command line options
 void Options::read_command_line_options(int argc, char** argv) {
-    
+
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
@@ -125,7 +125,7 @@ void Options::read_command_line_options(int argc, char** argv) {
                 fs::create_directory(pod);
             }
             ss << "--out-dir " << out_dir << "\n";
-            
+
         } else if (!strcmp(argv[i], "--output-thin-rate")) {
             if (i == argc - 1) fail_if_last(argv, i);
             if (atoi(argv[i + 1]) < 1) {
@@ -134,7 +134,7 @@ void Options::read_command_line_options(int argc, char** argv) {
             }
             thin = (unsigned int)atoi(argv[++i]);
             ss << "--output-thin-rate " << thin << "\n";
-            
+
         } else if (!strcmp(argv[i], "--predict")) {
             predict_ = true;
             ss << "--predict " << predict_ << "\n";

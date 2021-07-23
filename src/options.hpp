@@ -33,11 +33,11 @@ public:
     unsigned int get_iterations() const { return iterations; }
     unsigned int get_truncm() const { return truncm; }
     const std::vector<double>& get_s() const { return S; }
-    int get_ngroups()   const { return ngroups; } 
+    int get_ngroups()   const { return ngroups; }
     int get_nmixtures() const { return nmixtures; }
     const std::vector<std::vector<double>>& get_cva()  const { return cva;  }
     const std::vector<std::vector<double>>& get_cvai() const { return cvai; }
-    
+
 private:
     std::string bed_file = "";
     std::string dim_file = "";

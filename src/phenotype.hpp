@@ -82,13 +82,13 @@ public:
     MPI_File* get_outcsv_fh()  { return &outcsv_fh; }
     void print_info() const;
     std::vector<unsigned char>& get_mask4() { return mask4; }
-    std::vector<int>&           get_midx()  { return midx;  }
+    std::vector<int>&           get_midx()  { return midx; }
     std::vector<double>&        get_denom() { return denom; }
-    std::vector<double>&        get_muk()   { return muk;   }
-    std::vector<double>&        get_logl()  { return logl;  }
-    std::vector<double>&        get_acum()  { return acum;  }
-    std::vector<double>&        get_betas() { return betas;  }    
-    std::vector<int>&           get_comp()  { return comp;  }
+    std::vector<double>&        get_muk()   { return muk; }
+    std::vector<double>&        get_logl()  { return logl; }
+    std::vector<double>&        get_acum()  { return acum; }
+    std::vector<double>&        get_betas() { return betas; }
+    std::vector<int>&           get_comp()  { return comp; }
     //std::vector<std::vector<double>>&  get_pi_est() { return pi_est; }
     std::vector<std::vector<double>>*  get_pi_est() { return &pi_est; }
     int* get_cass()     { return cass; }
@@ -122,7 +122,7 @@ public:
     void   sample_for_free(const int n);
 
     unsigned int get_random_int() { return dist_d.get_random_number(); }
-        
+
     void   set_pi_est(const std::vector<std::vector<double>> val) { pi_est = val; }
     void   set_pi_est(const int group, const int k, const double val) { pi_est[group][k] = val; }
     double get_pi_est(const int group, const int k) { return pi_est[group][k]; }
@@ -140,12 +140,12 @@ public:
     //void set_sigmag(const double val) { sigmag = val; }
     void   set_mu(const double val) { mu = val; }
 
-    void   set_marker_acum(const int idx, const double val) { acum[idx] = val; } 
-    double get_marker_acum(const int idx) { return acum[idx]; } 
+    void   set_marker_acum(const int idx, const double val) { acum[idx] = val; }
+    double get_marker_acum(const int idx) { return acum[idx]; }
 
     void    set_marker_beta(const int idx, const double val) { betas[idx] = val; }
     double  get_marker_beta(const int idx) { return betas[idx]; }
-  
+
     int    get_marker_local_index(const int shuff_idx);
     double get_marker_ave(const int idx) { return mave[idx]; }
     double get_marker_sig(const int idx) { return msig[idx]; }
@@ -191,7 +191,7 @@ public:
     }
     int get_cass_sum_for_group(const int g) {
         int cass_sum = 0;
-        for (int i=0; i<K; i++) 
+        for (int i=0; i<K; i++)
             cass_sum += get_cass_for_group(g, i);
         return cass_sum;
     }
@@ -267,12 +267,12 @@ class PhenMgr {
 public:
     PhenMgr() = default;
     PhenMgr(const Options& opt, const int N, const int M) {
-        //std::cout << "+++Calling PhenMgr ctor" << std::endl; 
+        //std::cout << "+++Calling PhenMgr ctor" << std::endl;
         read_phen_files(opt, N, M);
-        //std::cout << "---PhenMgr ctor done" << std::endl; 
+        //std::cout << "---PhenMgr ctor done" << std::endl;
     }
     //~PhenMgr() {
-    //    std::cout << "/!\\ Calling PhenMgr dtor" << std::endl; 
+    //    std::cout << "/!\\ Calling PhenMgr dtor" << std::endl;
     //}
     void print_info();
     void compute_markers_statistics(const unsigned char* bed_data, const int N, const int M, const int mbytes);
