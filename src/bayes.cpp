@@ -39,14 +39,14 @@ void Bayes::predict() {
         fh = phen.get_inbet_fh();
         check_mpi(MPI_File_get_size(*fh, &file_size), __LINE__, __FILE__);
         //printf("file_size = %u B\n", file_size);
-    
+
         // First element of the .bet is the total number of processed markers
         // Then: iteration (uint) beta (double) for all markers
         uint Mtot_ = 0;
         MPI_Offset betoff = size_t(0);
         check_mpi(MPI_File_read_at_all(*fh, betoff, &Mtot_, 1, MPI_UNSIGNED, &status), __LINE__, __FILE__);
         if (Mtot_ != m_refrsid.size()) {
-            printf("Mismatch between expected and Mtot read from .bet file: %d vs %d\n", rsid.size(), Mtot_);
+            printf("Mismatch between expected and Mtot read from .bet file: %lu vs %d\n", rsid.size(), Mtot_);
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
 
@@ -65,7 +65,7 @@ void Bayes::predict() {
         uint start_iter = 0;
         //EO: use this one to speed up testing (avoids to read the entire bet history)
         //if (niter > 3) start_iter = niter - 3;
-        
+
         for (uint i=start_iter; i<niter; i++) {
             betoff
                 = sizeof(uint) // Mtot
@@ -75,7 +75,7 @@ void Bayes::predict() {
             for (int j=0; j<Mtot_;j++)
                 beta_sum[j] += beta_it[j];
         }
-        
+
         for (int j=0; j<Mtot_;j++)
             beta_sum[j] /= double(niter);
 
@@ -92,10 +92,10 @@ void Bayes::predict() {
 
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static)
-#endif 
+#endif
         for (int mrki=0; mrki<M; mrki++) {
 
-            // Get rsid from current 
+            // Get rsid from current
             int mglo = S + mrki;
             std::string id = rsid.at(mglo);
 
@@ -134,14 +134,14 @@ void Bayes::predict() {
         check_malloc(g, __LINE__, __FILE__);
 
         check_mpi(MPI_Allreduce(g_k, g, im4*4, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD), __LINE__, __FILE__);
- 
+
         double* y_k = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
         check_malloc(y_k, __LINE__, __FILE__);
 
         phen.get_centered_and_scaled_y(y_k);
 
         //EO: already done when computing original epsilon when reading .phen
-        // phen.set_nas_to_zero(y_k, im4*4);
+	//phen.set_nas_to_zero(y_k, im4*4);
         // NAs are 0.0 in all, so should be safe
         for (int i=0; i<im4*4; i++)
             y_k[i] -= (g[i] - g_k[i]);
@@ -163,10 +163,10 @@ void Bayes::predict() {
         double* Pval  = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
         check_malloc(Pval, __LINE__, __FILE__);
 
-        
+
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static) default(none) shared(phen, dotp_lut_a, dotp_lut_b, na_lut, sigma, y_k, Beta, Tdist, Se, Pval)
-#endif  
+#endif
         for (int mrki=0; mrki<M; mrki++) {
 
             // Global index in current .bim
@@ -208,7 +208,7 @@ void Bayes::predict() {
             Tdist[mrki] = tdist;
             Se[mrki]    = se;
             Pval[mrki]  = pval;
-      
+
             //if (mrki < 5) {
             //    printf("r: %3d  m: %8d %8d (%5s) %8d  beta=%20.15f  se=%20.15f  tdist=%20.15f pval=%20.15f   xtx=%10.1f xty=%15.6f\n", rank, mrki, mglo, id.c_str(), rmglo, beta, se, tdist, pval, xtx, xty);
             //}
@@ -220,7 +220,6 @@ void Bayes::predict() {
         if (rank >= 0)
             printf("INFO   : intermediate time 3 = %.2f seconds.\n", t_3 - t_2);
 
-       
         const int LLEN = 123 + 1;
         char* todump  = (char*) _mm_malloc(size_t(LLEN) * size_t(M) * sizeof(char), 32);
         check_malloc(todump, __LINE__, __FILE__);
@@ -248,15 +247,14 @@ void Bayes::predict() {
 
         int ps = 0;
         for (int i=0; i<rank; i++) { ps += mps[i]; }
-        
+
         MPI_Offset offset = size_t(ps) * size_t(LLEN-1);
         check_mpi(MPI_File_write_at(*mlma_fh,
                                     offset, todump, size_t(LLEN-1) * size_t(mp), MPI_CHAR, &status),
                   __LINE__, __FILE__);
-        
+
         _mm_free(todump);
-        
-        
+
         fflush(stdout);
         double t_4 = MPI_Wtime();
         MPI_Barrier(MPI_COMM_WORLD);
@@ -264,10 +262,9 @@ void Bayes::predict() {
             printf("INFO   : intermediate time 4 = %.2f seconds.\n", t_4 - t_3);
 
         MPI_Barrier(MPI_COMM_WORLD);
-        
+
         phen.close_prediction_files();
 
-       
         _mm_free(Beta);
         _mm_free(Tdist);
         _mm_free(Se);
@@ -310,7 +307,7 @@ void Bayes::cross_bim_files() {
     std::ifstream refin(opt.get_ref_bim_file().c_str());
     if (!refin) throw ("Error: can not open the file [" + opt.get_ref_bim_file() + "] to read.");
     idx = 0;
-    while (refin >> chr >> id >> genPos >> physPos >> allele1 >> allele2) {        
+    while (refin >> chr >> id >> genPos >> physPos >> allele1 >> allele2) {
         m_refrsid[id] = idx++;
     }
     refin.close();
@@ -328,13 +325,13 @@ void Bayes::process() {
         phen.set_midx();
         for (int i=0; i<opt.get_ngroups(); i++) {
             phen.set_sigmag_for_group(i, phen.sample_beta_rng(1.0, 1.0));
-            if (mtotgrp.at(i) == 0) 
+            if (mtotgrp.at(i) == 0)
                 phen.set_sigmag_for_group(i, 0.0);
             //printf("sample sigmag[%d] = %20.15f\n", i, phen.get_sigmag_for_group(i));
         }
         check_mpi(MPI_Bcast(phen.get_sigmag()->data(), phen.get_sigmag()->size(), MPI_DOUBLE, 0, MPI_COMM_WORLD), __LINE__, __FILE__);
         phen.set_pi_est(pi_prior);
-        //printf("sample sigmag[0] = %20.15f\n", phen.get_sigmag()->at(0));        
+        //printf("sample sigmag[0] = %20.15f\n", phen.get_sigmag()->at(0));
     }
 
     const int NPHEN =  pmgr.get_phens().size();
@@ -361,11 +358,11 @@ void Bayes::process() {
             //printf("new mu = %20.15f\n", phen.get_mu());
             phen.offset_epsilon(-phen.get_mu());
             //**BUG in original phen.epsilon_stats();
-            
+
             // Shuffling of the markers on its own PRNG (see README/wiki)
             if (opt.shuffle_markers())
                 phen.shuffle_midx(opt.mimic_hydra());
-            
+
             phen.reset_m0();
             phen.reset_cass();
         }
@@ -377,7 +374,7 @@ void Bayes::process() {
 
         for (int mrki=0; mrki<Mm; mrki++) {
 
-            bool share_mrk = false;             
+            bool share_mrk = false;
             for (int i=0; i<NPHEN*3; i++)
                 dbetas[i] = 0.0;
             int mloc = 0;
@@ -392,7 +389,7 @@ void Bayes::process() {
                 int pheni = -1;
 
                 for (auto& phen : pmgr.get_phens()) {
-                    
+
                     pheni += 1;
 
                     // Adav
@@ -419,10 +416,10 @@ void Bayes::process() {
                     }
 
                     double num = dot_product(mloc, phen.get_epsilon(), phen.get_marker_ave(mloc), phen.get_marker_sig(mloc));
-                    
+
                     //printf("num = %20.15f\n", num);
                     num += beta * double(phen.get_nonas() - 1);
-                    
+
                     //printf("i:%d r:%d m:%d: num = %.17g, %20.15f, %20.15f\n", it, rank, mloc, num, phen.get_marker_ave(mloc), phen.get_marker_sig(mloc));
 
                     for (int i=1; i<=K-1; ++i)
@@ -430,17 +427,17 @@ void Bayes::process() {
 
                     for (int i=0; i<K; i++) {
                         logl[i] = log(phen.get_pi_est(mgrp, i));
-                        if (i>0) 
+                        if (i>0)
                             logl[i] += -0.5 * log(sigg_e * double(phen.get_nonas() - 1) * cva[mgrp][i] + 1.0) + muk[i] * num * inv2sige;
                         //printf("logl[%d] = %20.15f\n", i, logl[i]);
                     }
-                    
+
                     double prob = phen.sample_unif_rng();
 
                     bool zero_acum = false;
                     double tmp1 = 0.0;
                     for (int i=0; i<K; i++) {
-                        if (abs(logl[i] - logl[0]) > 700.0) 
+                        if (abs(logl[i] - logl[0]) > 700.0)
                             zero_acum = true;
                         tmp1 += exp(logl[i] - logl[0]);
                     }
@@ -529,32 +526,32 @@ void Bayes::process() {
                     cnt_bet[i] = 0;
                     cnt_bed[i] = 0;
                 }
-                dis_bet[i] = disp_bet; 
+                dis_bet[i] = disp_bet;
                 dis_bed[i] = disp_bed;
                 //printf("mrki = %d, recv_update[%d] = %s %d:%d\n", mrki, i, recv_update[i] ? "T" : "F", dis_bet[i], cnt_bet[i]);
                 disp_bet += cnt_bet[i];
                 disp_bed += cnt_bed[i];
             }
-            
+
             //printf("rank %d bytes vs %d\n", totbytes, disp_bed);
 
             double recv_dbetas[disp_bet];
             MPI_Allgatherv(&dbetas, share_mrk ? NPHEN * 3 : 0, MPI_DOUBLE,
                            recv_dbetas, cnt_bet, dis_bet, MPI_DOUBLE, MPI_COMM_WORLD);
-            
+
             unsigned char* recv_bed = (unsigned char*) _mm_malloc(disp_bed, 32);
             check_malloc(recv_bed, __LINE__, __FILE__);
             MPI_Allgatherv(&bed_data[mloc * mbytes], share_mrk ? mbytes : 0, MPI_UNSIGNED_CHAR,
                            recv_bed, cnt_bed, dis_bed, MPI_UNSIGNED_CHAR, MPI_COMM_WORLD);
-            
+
             update_epsilon(cnt_bet, recv_dbetas, recv_bed);
-            
+
             MPI_Barrier(MPI_COMM_WORLD);
             double te_sync = MPI_Wtime();
             t_it_sync += te_sync - ts_sync;
-            
+
             _mm_free(recv_bed);
-            
+
         } // End marker loop
 
         //exit(0);
@@ -594,8 +591,7 @@ void Bayes::process() {
 
             // Update global parameters
             //
-            
-            for (int i=0; i<G; i++) {               
+            for (int i=0; i<G; i++) {
 
                 // Skip empty groups
                 if (mtotgrp.at(i) == 0)
@@ -634,10 +630,10 @@ void Bayes::process() {
 
             double e_sqn = phen.epsilon_sumsqr();
             //printf("i:%d r:%d p:%d  e_sqn = %20.15f\n", it, rank, pheni, e_sqn);
-            
+
             //EO: sample sigmaE and broadcast the one from rank 0 to all the others
             phen.set_sigmae(phen.sample_inv_scaled_chisq_rng(V0E + (double)N, (e_sqn + V0E * S02E) / (V0E + (double)N)));
-            
+
             double sigmae_r0 = phen.get_sigmae();
             check_mpi(MPI_Bcast(&sigmae_r0, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD), __LINE__, __FILE__);
             phen.set_sigmae(sigmae_r0);
@@ -653,7 +649,7 @@ void Bayes::process() {
                 check_mpi(MPI_Bcast(phen.get_pi_est()->at(i).data(), phen.get_pi_est()->at(i).size(), MPI_DOUBLE, 0, MPI_COMM_WORLD), __LINE__, __FILE__);
             }
         }
-        
+
         double te_it = MPI_Wtime();
         if (rank == 0)
             printf("RESULT : It %d  total proc time = %7.3f sec, with sync time = %7.3f\n", it, te_it - ts_it, t_it_sync);
@@ -691,7 +687,7 @@ void Bayes::update_epsilon(const int* counts, const double* dbetas, const unsign
     for (int i=0; i<nranks; i++) {
         int cnt = counts[i];
         //printf("r:%d  cnt = %d\n", i, cnt);
-        if (cnt == 0) continue;        
+        if (cnt == 0) continue;
         assert(cnt == NPHEN * 3);
         //printf(" cnt > 0: task %d, get for rank %d cnt = %d dbetas:\n", rank, i, cnt);
         int pheni = 0;
@@ -725,7 +721,7 @@ double Bayes::dot_product(const int mloc, double* __restrict__ phen, const doubl
 #ifdef _OPENMP
     //#pragma omp parallel for schedule(static) reduction(addpd4:suma,sumb)
 #pragma omp parallel for schedule(static) reduction(addpd8:sum42)
-#endif                              
+#endif
     for (int j=0; j<mbytes; j++) {
         //luta  = _mm256_load_pd(&dotp_lut_a[bed[j] * 4]);
         //lutb  = _mm256_load_pd(&dotp_lut_b[bed[j] * 4]);
@@ -743,9 +739,9 @@ double Bayes::dot_product(const int mloc, double* __restrict__ phen, const doubl
         sum42 = _mm512_add_pd(sum42, p42);
     }
 
-    //return sigma_inv * 
+    //return sigma_inv *
     //    (suma[0] + suma[1] + suma[2] + suma[3] - mu * (sumb[0] + sumb[1] + sumb[2] + sumb[3]));
-    return sigma_inv * 
+    return sigma_inv *
         (sum42[0] + sum42[1] + sum42[2] + sum42[3] - mu * (sum42[4] + sum42[5] + sum42[6] + sum42[7]));
 
 #else
@@ -756,7 +752,7 @@ double Bayes::dot_product(const int mloc, double* __restrict__ phen, const doubl
 #ifdef _OPENMP
     //#pragma omp parallel for schedule(static) reduction(addpd4:suma,sumb)
 #pragma omp parallel for schedule(static) reduction(+:dpa,dpb)
-#endif                              
+#endif
     for (int i=0; i<mbytes; i++) {
 #ifdef _OPENMP
 #pragma omp simd aligned(dotp_lut_a,dotp_lut_b,phen:32)
@@ -807,7 +803,7 @@ void Bayes::setup_processing() {
     }
 
     read_group_index_file(opt.get_group_index_file());
-    
+
     for (int i=0; i<Mt; i++) {
         mtotgrp.at(get_marker_group(i)) += 1;
     }
@@ -818,11 +814,11 @@ void Bayes::setup_processing() {
 
 void Bayes::check_openmp() {
 #ifdef _OPENMP
-#pragma omp parallel 
+#pragma omp parallel
     {
         if (rank == 0) {
             int nt = omp_get_num_threads();
-            if (omp_get_thread_num() == 0) 
+            if (omp_get_thread_num() == 0)
                 printf("INFO   : OMP parallel regions will use %d thread(s)\n", nt);
         }
     }
@@ -839,7 +835,7 @@ void Bayes::read_group_index_file(const std::string& file) {
 
     if (rank == 0)
         std::cout << "INFO   : Reading groups from " + file + "." << std::endl;
-    
+
     std::string label;
     int group;
 
@@ -871,7 +867,7 @@ void Bayes::check_processing_setup() {
 void Bayes::load_genotype() {
 
     double ts = MPI_Wtime();
-    
+
     MPI_File bedfh;
     const std::string bedfp = opt.get_bed_file();
     check_mpi(MPI_File_open(MPI_COMM_WORLD, bedfp.c_str(), MPI_MODE_RDONLY, MPI_INFO_NULL, &bedfh),  __LINE__, __FILE__);
@@ -887,7 +883,7 @@ void Bayes::load_genotype() {
 
     // Gather the sizes to determine common number of reads
     size_t max_size_bytes = 0;
-    check_mpi(MPI_Allreduce(&size_bytes, &max_size_bytes, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, MPI_COMM_WORLD), __LINE__, __FILE__); 
+    check_mpi(MPI_Allreduce(&size_bytes, &max_size_bytes, 1, MPI_UNSIGNED_LONG_LONG, MPI_MAX, MPI_COMM_WORLD), __LINE__, __FILE__);
 
     const int NREADS = check_int_overflow(size_t(ceil(double(max_size_bytes)/double(INT_MAX/2))), __LINE__, __FILE__);
     size_t bytes = 0;
@@ -914,7 +910,7 @@ void Bayes::set_block_of_markers() {
     int len[nranks], start[nranks];
     int cum = 0;
     for (int i=0; i<nranks; i++) {
-        len[i]  = i < modu ? size + 1 : size;        
+        len[i]  = i < modu ? size + 1 : size;
         start[i] = cum;
         cum += len[i];
     }
@@ -923,7 +919,7 @@ void Bayes::set_block_of_markers() {
 
     M = len[rank];
     S = start[rank];
-    
+
     printf("INFO   : rank %4d has %d markers over tot Mt = %d, max Mm = %d, starting at S = %d\n", rank, M, Mt, Mm, S);
     //@todo: mpi check sum over tasks == Mt
 }
