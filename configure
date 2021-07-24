@@ -1,0 +1,49 @@
+#!/bin/sh
+
+set -e
+
+root_path="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+echo root_path = $root_path
+
+if test x"$#" != x"1" -o x"$1" = "x" ; then
+  echo
+  echo Please specify '"'arch'"' argument, for example:
+  echo
+  echo $0 Unix
+  echo
+  exit 1
+fi
+
+arg_arch="$1"
+
+bld_path=${root_path}/build_${1}
+echo bld_path = $bld_path
+if test ! -d $bld_path; then
+    mkdir -v $bld_path;
+fi
+
+setup_file=${root_path}/setup/Make.${arg_arch}
+echo setup_file = $setup_file
+
+if test ! -f $setup_file ; then
+  echo
+  echo Please create the configuration file $setup_file
+  echo
+  exit 127
+fi
+
+mkfile=${root_path}/Makefile
+echo mkfile = $mkfile
+
+if test -f $mkfile ; then
+  rm $mkfile
+fi
+
+sed -e "s:EDIT_BUILDDIR:${bld_path}:" ${root_path}/Makefile.ext \
+    | sed -e "s:EDIT_ARCH:${arg_arch}:" \
+    | sed -e "s:EDIT_ROOTDIR:${root_path}:" \
+    | sed -e "s:EDIT_SOURCEDIR:${root_path}/src:" > $mkfile
+
+
+# copy the architecture setup file
+#cp -vf $setup_file setup

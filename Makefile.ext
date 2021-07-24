@@ -1,0 +1,56 @@
+#
+# To be edited by the configure script
+#
+ARCH	  = EDIT_ARCH
+ROOTDIR   = EDIT_ROOTDIR
+BUILDDIR  = EDIT_BUILDDIR
+SOURCEDIR = EDIT_SOURCEDIR
+
+#
+# $(ARCH) specific configuration 
+#
+setup_file = ${ROOTDIR}/setup/Make.$(ARCH)
+include $(setup_file)
+
+EXEC	= gmrm
+
+BINDIR    = $(BUILDDIR)
+
+SOURCES  := $(wildcard $(SOURCEDIR)/*.cpp)
+
+#else ifeq ($(CXX),icpc)
+
+#EXEC     ?= ardyh_i
+#CXX       = mpiicpc
+#BUILDDIR  = build_i
+#CXXFLAGS += -qopenmp
+#CXXFLAGS += -xCORE-AVX512 -qopt-zmm-usage=high
+##CXXFLAGS += -xCORE-AVX2, -axCORE-AVX512 -qopt-zmm-usage=high
+#CXXFLAGS += -qopt-report=2 -qopt-report-phase=vec
+#else
+#	@echo "Neither GCC nor Intel compiler available." 1>&2 && false
+#
+#endif
+
+OBJS	:= $(patsubst $(SOURCEDIR)/%.cpp, $(BUILDDIR)/%.o, $(SOURCES))
+DEPS	:= $(patsubst $(SOURCEDIR)/%.cpp, $(BUILDDIR)/%.d, $(SOURCES))
+
+LIBS      = -lz -lstdc++fs
+
+
+.PHONY: all clean
+
+all: gmrm
+
+gmrm: $(BINDIR)/$(EXEC)
+
+$(BINDIR)/$(EXEC): $(OBJS)
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LIBS)
+
+$(BUILDDIR)/%.o: $(SOURCEDIR)/%.cpp $(ROOTDIR)/Makefile
+	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
+
+-include $(DEPS)
+
+clean:
+	rm -vf $(BUILDDIR)/*.o $(BUILDDIR)/*.d $(BINDIR)/$(EXEC)
