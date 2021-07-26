@@ -165,7 +165,7 @@ void Bayes::predict() {
 
 
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static) default(none) shared(phen, dotp_lut_a, dotp_lut_b, na_lut, sigma, y_k, Beta, Tdist, Se, Pval, im4, mask4)
+#pragma omp parallel for
 #endif
         for (int mrki=0; mrki<M; mrki++) {
 
