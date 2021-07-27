@@ -6,7 +6,9 @@
 #SBATCH --time 00:10:00
 #SBTACH --partition debug
 
-module load gcc/8 mvapich2 boost
+#module load gcc/8 mvapich2 boost
+module load gcc mvapich2 boost
+
 
 ARCH=gcc_mvapich2
 
@@ -19,3 +21,4 @@ srun ../build_$ARCH/gmrm \
 --shuffle-markers 1 \
 --seed 171014 \
 --iterations 10 \
+--out-dir test1

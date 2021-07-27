@@ -4,9 +4,10 @@
 #SBATCH --cpus-per-task 1
 #SBATCH --mem 10G
 #SBATCH --time 00:10:00
-#SBATCH --partition debug
+# SBATCH --partition debug
 
-module load gcc/8 mvapich2 boost
+#module load gcc/8 mvapich2 boost
+module load gcc mvapich2 boost
 
 ARCH=gcc_mvapich2
 
@@ -17,3 +18,4 @@ srun ../build_$ARCH/gmrm \
 --bim-file test.bim \
 --ref-bim-file test.bim \
 --predict \
+--out-dir test1
