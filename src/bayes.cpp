@@ -53,7 +53,7 @@ void Bayes::predict() {
         assert((file_size - sizeof(uint)) % (Mtot_ * sizeof(double) + sizeof(uint)) == 0);
         uint niter = (file_size - sizeof(uint)) / (Mtot_ * sizeof(double) + sizeof(uint));
         if (rank == 0)
-            printf("INFO   : Number of recorded iterations in .bet file: %u\n", niter);
+            printf("INFO   : Number of recorded iterations in .bet file %d: %u\n", pidx-1, niter);
 
         double* beta_sum = (double*) _mm_malloc(size_t(Mtot_) * sizeof(double), 32);
         check_malloc(beta_sum, __LINE__, __FILE__);
@@ -82,8 +82,8 @@ void Bayes::predict() {
         fflush(stdout);
         double t_1 = MPI_Wtime();
         MPI_Barrier(MPI_COMM_WORLD);
-        if (rank >= 0)
-            printf("INFO   : intermediate time 1 = %.2f seconds.\n", t_1 - ts);
+        //if (rank >= 0)
+        //    printf("INFO   : intermediate time 1 = %.2f seconds.\n", t_1 - ts);
 
 
         double* g_k = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
@@ -127,8 +127,8 @@ void Bayes::predict() {
         fflush(stdout);
         double t_2 = MPI_Wtime();
         MPI_Barrier(MPI_COMM_WORLD);
-        if (rank >= 0)
-            printf("INFO   : intermediate time 2 = %.2f seconds.\n", t_2 - t_1);
+        //if (rank >= 0)
+        //    printf("INFO   : intermediate time 2 = %.2f seconds.\n", t_2 - t_1);
 
         double* g = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
         check_malloc(g, __LINE__, __FILE__);
@@ -150,7 +150,7 @@ void Bayes::predict() {
         for (int i=0; i<N; i++)
             sigma += y_k[i] * y_k[i];
         sigma /= phen.get_nonas();
-        printf("### r: %d sigma = %20.15f\n", rank, sigma);
+        //printf("### r: %d sigma = %20.15f\n", rank, sigma);
 
         MPI_File* mlma_fh = phen.get_outmlma_fh();
 
@@ -165,7 +165,7 @@ void Bayes::predict() {
 
 
 #ifdef _OPENMP
-#pragma omp parallel for schedule(static) default(none) shared(phen, dotp_lut_a, dotp_lut_b, na_lut, sigma, y_k, Beta, Tdist, Se, Pval)
+#pragma omp parallel for
 #endif
         for (int mrki=0; mrki<M; mrki++) {
 
@@ -217,8 +217,8 @@ void Bayes::predict() {
         fflush(stdout);
         double t_3 = MPI_Wtime();
         MPI_Barrier(MPI_COMM_WORLD);
-        if (rank >= 0)
-            printf("INFO   : intermediate time 3 = %.2f seconds.\n", t_3 - t_2);
+        //if (rank >= 0)
+        //    printf("INFO   : intermediate time 3 = %.2f seconds.\n", t_3 - t_2);
 
         const int LLEN = 123 + 1;
         char* todump  = (char*) _mm_malloc(size_t(LLEN) * size_t(M) * sizeof(char), 32);
@@ -258,8 +258,8 @@ void Bayes::predict() {
         fflush(stdout);
         double t_4 = MPI_Wtime();
         MPI_Barrier(MPI_COMM_WORLD);
-        if (rank >= 0)
-            printf("INFO   : intermediate time 4 = %.2f seconds.\n", t_4 - t_3);
+        //if (rank >= 0)
+        //    printf("INFO   : intermediate time 4 = %.2f seconds.\n", t_4 - t_3);
 
         MPI_Barrier(MPI_COMM_WORLD);
 

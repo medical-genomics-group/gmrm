@@ -113,13 +113,14 @@ int Phenotype::get_m0_sum() {
 
 // Set input filenames based on input phen file (as per output)
 void Phenotype::set_prediction_filenames(const std::string out_dir) {
-    fs::path pibet = filepath;
-    pibet.replace_extension(".bet");
-    inbet_fp = pibet.string();
-
     fs::path pphen = filepath;
     fs::path base  = out_dir;
     base /= pphen.stem();
+    fs::path pibet = base;
+    pibet.replace_extension(".bet");
+    inbet_fp = pibet.string();
+    //std::cout << "inbet_fp = " << inbet_fp << std::endl;
+
     fs::path pmlma = base;
     pmlma += ".mlma";
     outmlma_fp = pmlma.string();
@@ -151,7 +152,6 @@ void Phenotype::open_prediction_files() {
                             get_inbet_fh()),
               __LINE__, __FILE__);
 
-	std::cout << "fails to open " << get_outmlma_fp() << std::endl;
     check_mpi(MPI_File_open(MPI_COMM_WORLD,
                             get_outmlma_fp().c_str(),
                             MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_EXCL,

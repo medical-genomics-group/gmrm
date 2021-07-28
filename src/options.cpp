@@ -37,7 +37,7 @@ void Options::read_command_line_options(int argc, char** argv) {
         else if (!strcmp(argv[i], "--phen-files")) {
             if (i == argc - 1) fail_if_last(argv, i);
             std::string cslist = argv[++i];
-            ss << "--phenfiles " << cslist << "\n";
+            ss << "--phen-files " << cslist << "\n";
             std::stringstream sslist(cslist);
             std::string filepath;
             while (getline(sslist, filepath, ',')) {
@@ -73,7 +73,7 @@ void Options::read_command_line_options(int argc, char** argv) {
 
         } else if (!strcmp(argv[i], "--mimic-hydra")) {
             mimic_hydra_ = true;
-            ss << "--mimic_hydra " << mimic_hydra_ << "\n";
+            ss << "--mimic-hydra " << mimic_hydra_ << "\n";
 
         } else if (!strcmp(argv[i], "--seed")) {
             if (i == argc - 1) fail_if_last(argv, i);
@@ -174,19 +174,19 @@ void Options::fail_if_last(char** argv, const int i) {
 // Check for minimal setup: a bed file + a dim file + phen file(s)
 void Options::check_options() {
     if (get_bed_file() == "") {
-        std::cout << "FATAL  : no bed file provided! Please use the --bedfile option." << std::endl;
+        std::cout << "FATAL  : no bed file provided! Please use the --bed-file option." << std::endl;
         exit(EXIT_FAILURE);
     }
     //std::cout << "  bed file: OK - " << get_bed_file() << "\n";
 
     if (get_dim_file() == "") {
-        std::cout << "FATAL  : no dim file provided! Please use the --dimfile option." << std::endl;
+        std::cout << "FATAL  : no dim file provided! Please use the --dim-file option." << std::endl;
         exit(EXIT_FAILURE);
     }
     //std::cout << "  dim file: OK - " << get_dim_file() << "\n";
 
     if (count_phen_files() == 0) {
-        std::cout << "FATAL  : no phen file(s) provided! Please use the --phenfile option." << std::endl;
+        std::cout << "FATAL  : no phen file(s) provided! Please use the --phen-files option." << std::endl;
         exit(EXIT_FAILURE);
     }
     //std::cout << "  phen file(s): OK - " << count_phen_files() << " files passed.\n";
