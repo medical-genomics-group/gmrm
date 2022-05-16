@@ -1,0 +1,23 @@
+# This script checks if the code can be compiled
+
+on:
+  push:
+  pull_request:
+
+name: check_build
+
+jobs:
+  check_build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: First step, from the Wiki
+        run: |
+          cd setup/
+          cp Make.gcc_mvapich2 Make.gcc_openmpi
+          cd ..
+
+      - name: make
+        run: make
+
