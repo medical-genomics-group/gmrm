@@ -15,6 +15,9 @@ jobs:
       - name: Install OpenMPI
         run: sudo apt install libopenmpi-dev
 
+      - name: Install Boost
+        run: sudo apt install libboost-all-dev
+
       - name: First step, from the Wiki
         run: |
           cd setup/
