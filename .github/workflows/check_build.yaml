@@ -24,3 +24,6 @@ jobs:
       - name: make
         run: make
 
+      - name: Run the program without arguments
+        run: ./build_gcc_openmpi/gmrm || true
+
