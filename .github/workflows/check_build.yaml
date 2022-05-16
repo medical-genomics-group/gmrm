@@ -12,16 +12,19 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
+      - name: Install OpenMPI
+        run: sudo apt install libopenmpi-dev
+
       - name: First step, from the Wiki
         run: |
           cd setup/
           cp Make.gcc_mvapich2 Make.gcc_openmpi
           cd ..
 
-      - name: configure
+      - name: Configure
         run: ./configure gcc_openmpi
 
-      - name: make
+      - name: Make
         run: make
 
       - name: Run the program without arguments
