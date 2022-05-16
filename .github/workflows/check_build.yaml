@@ -18,6 +18,9 @@ jobs:
           cp Make.gcc_mvapich2 Make.gcc_openmpi
           cd ..
 
+      - name: configure
+        run: ./configure gcc_openmpi
+
       - name: make
         run: make
 
