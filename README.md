@@ -2,8 +2,8 @@
 
 Branch   |Status
 ---------|-------------------------------------------------------------------------------------------------------------
-`main`   |![check_build](https://github.com/richelbilderbeek/gmrm/workflows/check_build/badge.svg?branch=main)   
-`effects`|![check_build](https://github.com/richelbilderbeek/gmrm/workflows/check_build/badge.svg?branch=effects)
+`main`   |![check_build](https://github.com/medical-genomics-group/gmrm/workflows/check_build/badge.svg?branch=main)   
+`effects`|![check_build](https://github.com/medical-genomics-group/gmrm/workflows/check_build/badge.svg?branch=effects)
 
 Welcome to the home of our `gmrm` software. The code is hybrid-parallel software for a Bayesian grouped mixture of regressions model for genome-wide association studies (GWAS). It is written in C++ using extensive optimisations and code vectorisation. It relies on plink's .bed format. It can analyse multiple traits simultaneously.
 
