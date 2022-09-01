@@ -1,0 +1,1 @@
+gmrm_vc.exe --bed-file ../../example/test.bed --dim-file ../../example/test.dim --phen-files ../../example/test1.phen,../../example/test2.phen --group-index-file ../../example/test.gri --shuffle-markers 1 --seed 171014 --iterations 500

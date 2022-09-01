@@ -1,0 +1,10 @@
+﻿  bayes.cpp
+C:\Users\maxim\OneDrive\Desktop\folder\work\ista_austria\work_project\gmrm_vc\options.hpp(26,35): warning C4267: 'return': conversion from 'size_t' to 'int', possible loss of data
+C:\Users\maxim\OneDrive\Desktop\folder\work\ista_austria\work_project\gmrm_vc\phenotype.hpp(231,24): warning C4018: '<': signed/unsigned mismatch
+C:\Users\maxim\OneDrive\Desktop\folder\work\ista_austria\work_project\gmrm_vc\dimensions.hpp(11,34): warning C4018: '<': signed/unsigned mismatch
+C:\Users\maxim\OneDrive\Desktop\folder\work\ista_austria\work_project\gmrm_vc\bayes.cpp(305,28): warning C4267: 'initializing': conversion from 'size_t' to 'int', possible loss of data
+C:\Users\maxim\OneDrive\Desktop\folder\work\ista_austria\work_project\gmrm_vc\bayes.cpp(325,46): warning C4267: 'initializing': conversion from 'size_t' to 'int', possible loss of data
+C:\Users\maxim\OneDrive\Desktop\folder\work\ista_austria\work_project\gmrm_vc\bayes.cpp(325,46): warning C4267: 'initializing': conversion from 'size_t' to 'const int', possible loss of data
+C:\Users\maxim\OneDrive\Desktop\folder\work\ista_austria\work_project\gmrm_vc\bayes.cpp(367,25): warning C4018: '<=': signed/unsigned mismatch
+C:\Users\maxim\OneDrive\Desktop\folder\work\ista_austria\work_project\gmrm_vc\bayes.cpp(919,71): warning C4267: 'argument': conversion from 'size_t' to 'const int', possible loss of data
+  gmrm_vc.vcxproj -> C:\Users\maxim\OneDrive\Desktop\folder\work\ista_austria\work_project\gmrm_vc\x64\Debug\gmrm_vc.exe
