@@ -58,6 +58,33 @@ public:
         return real_variate_generator();
     }
 
+    double trunc_norm_rng(double mean, double sigma2, double trunc){
+        const int max_it = 100000;
+        double x;
+        if(trunc == 1.0){
+            int i = 0;
+            do{
+                x = norm_rng(mean, sigma2);
+                i++;
+                if(i >= max_it){
+                    std::cout << "FATAL: Could not sample from truncated normal" << std::endl;
+                    exit(EXIT_FAILURE);
+                }
+            } while(x < 0 && i < max_it);
+        }
+        else if(trunc == 0.0){
+            int i = 0;
+            do{
+                x = norm_rng(mean, sigma2);
+                i++;
+                if(i >= max_it){
+                    std::cout << "FATAL: Could not sample from truncated normal" << std::endl;
+                    exit(EXIT_FAILURE);
+                }
+            } while(x > 0 && i < max_it);
+        }
+        return x;
+    }
 };
 
 

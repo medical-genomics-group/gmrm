@@ -17,6 +17,7 @@ private:
     std::string filepath;
     std::string inbet_fp;
     std::string outmlma_fp;
+    std::string outyest_fp;
     std::string outbet_fp;
     std::string outcpn_fp;
     std::string outcsv_fp;
@@ -48,6 +49,8 @@ private:
     double* mave     = nullptr;
     double* msig     = nullptr;
     double* epsilon_ = nullptr;
+    double* z_       = nullptr;
+    double* y_       = nullptr;
     int*    cass     = nullptr;
     double epssum = 0.0;
     double sigmae_ = 0.0;
@@ -55,7 +58,7 @@ private:
     double mu     = 0.0;
     void read_file(const Options& opt);
     void set_output_filenames(const std::string out_dir);
-
+    int I = 0;
 public:
     Phenotype(std::string fp, const Options& opt, const int N, const int M);
 
@@ -66,12 +69,15 @@ public:
         if (mave     != nullptr)  _mm_free(mave);
         if (msig     != nullptr)  _mm_free(msig);
         if (epsilon_ != nullptr)  _mm_free(epsilon_);
+        if (z_ != nullptr)  _mm_free(z_);
+        if (y_ != nullptr)  _mm_free(y_);
         if (cass     != nullptr)  _mm_free(cass);
     }
 
     std::string get_filepath()   const { return filepath; }
     std::string get_inbet_fp()   const { return inbet_fp; }
     std::string get_outmlma_fp() const { return outmlma_fp; }
+    std::string get_outyest_fp() const { return outyest_fp; }
     std::string get_outbet_fp()  const { return outbet_fp; }
     std::string get_outcpn_fp()  const { return outcpn_fp; }
     std::string get_outcsv_fp()  const { return outcsv_fp; }
@@ -99,6 +105,8 @@ public:
     double* get_mave()        { return mave; }
     double* get_msig()        { return msig; }
     double* get_epsilon()     { return epsilon_; }
+    double* get_z()           { return z_; }
+    double* get_y()           { return y_; }
     double  get_epsilon_sum() { return epssum; }
     double  get_sigmae()      { return sigmae_; }
     void    set_sigmae(const double val) { sigmae_ = val; }
@@ -115,6 +123,7 @@ public:
     void shuffle_midx(const bool mimic_hydra);
     double sample_norm_rng();
     double sample_norm_rng(const double a, const double b);
+    double sample_trunc_norm_rng(const double a, const double b, const double c);
     double sample_beta_rng();
     double sample_beta_rng(const double a, const double b);
     double sample_unif_rng();
@@ -149,7 +158,12 @@ public:
     int    get_marker_local_index(const int shuff_idx);
     double get_marker_ave(const int idx) { return mave[idx]; }
     double get_marker_sig(const int idx) { return msig[idx]; }
+    
+    void   init_latent();
+    void   update_latent(const int mloc, const unsigned char* bed);
+    void   offset_latent(const double offset);
 
+    void   init_epsilon();
     void   update_epsilon(const double* dbeta, const unsigned char* bed);
     double epsilon_sumsqr();
     double epsilon_sum();

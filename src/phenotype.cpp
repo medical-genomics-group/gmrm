@@ -29,6 +29,10 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     check_malloc(msig, __LINE__, __FILE__);
     epsilon_ = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
     check_malloc(epsilon_, __LINE__, __FILE__);
+    z_ = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+    check_malloc(z_, __LINE__, __FILE__);
+    y_ = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+    check_malloc(y_, __LINE__, __FILE__);
 
     if (!opt.predict()) {
         cass = (int*) _mm_malloc(G * K * sizeof(int), 32);
@@ -88,10 +92,17 @@ Phenotype::Phenotype(const Phenotype& rhs) :
     sigmae_(rhs.sigmae_),
     sigmag(rhs.sigmag),
     mu(rhs.mu) {
+    
     epsilon_ = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
     check_malloc(epsilon_, __LINE__, __FILE__);
     for (int i=0; i<im4*4; i++)
         epsilon_[i] = rhs.epsilon_[i];
+
+    y_ = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+    check_malloc(y_, __LINE__, __FILE__);
+    for (int i=0; i<im4*4; i++)
+        y_[i] = rhs.y_[i];
+    
     mave = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
     check_malloc(mave, __LINE__, __FILE__);
     msig = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
@@ -124,6 +135,11 @@ void Phenotype::set_prediction_filenames(const std::string out_dir) {
     fs::path pmlma = base;
     pmlma += ".mlma";
     outmlma_fp = pmlma.string();
+
+    fs::path pyest = base;
+    pyest += ".yest";
+    outyest_fp = pyest.string();
+    std::cout << outyest_fp << std::endl;
 }
 
 void Phenotype::set_output_filenames(const std::string out_dir) {
@@ -281,6 +297,10 @@ double Phenotype::sample_norm_rng() {
     return dist_d.norm_rng(epssum / double(nonas), get_sigmae() / double(nonas));
 }
 
+double Phenotype::sample_trunc_norm_rng(const double a, const double b, const double c) {
+    return dist_d.trunc_norm_rng(a, b, c);
+}
+
 double Phenotype::sample_beta_rng(const double a, const double b) {
     return dist_d.beta_rng(a, b);
 }
@@ -319,6 +339,48 @@ void Phenotype::shuffle_midx(const bool mimic_hydra) {
     } else {
         boost::variate_generator< boost::mt19937&, boost::uniform_int<> > generator(dist_m.get_rng(), unii);
         boost::range::random_shuffle(midx, generator);
+    }
+}
+
+// Set latent variable to 0 for all individuals
+void Phenotype::init_latent(){
+    double* z = get_z();
+    for (int i=0; i<im4*4; i++) z[i] = 0.0;
+}
+
+// Update latent variable based on current marker and effect
+void Phenotype::update_latent(const int mloc, const unsigned char* bed) {
+    double* z = get_z();
+    double beta = get_marker_beta(mloc);
+    double mave = get_marker_ave(mloc);
+    double msig = get_marker_sig(mloc);
+    for (int i = 0; i < im4; i++) {
+        const int bedi = bed[i] * 4;
+        const int masi = mask4[i] * 4;
+        for (int k = 0; k < 4; k++) {
+            double val = (dotp_lut_a[bedi + k] - mave) * dotp_lut_b[bedi + k] * na_lut[masi + k] * msig;
+            z[i*4+k] += val * beta;
+        }
+    } 
+}
+
+void Phenotype::offset_latent(const double offset) {
+    double* z = get_z();
+    for (int i=0; i<im4; i++) {
+        const int masi = mask4[i] * 4;
+        for (int j=0; j<4; j++) {
+            z[i*4 + j] += offset * na_lut[masi + j];
+        }
+    }
+}
+
+// Sample artificial target from truncated normal and update residual 
+void Phenotype::init_epsilon(){
+    double* z = get_z();
+    double* epsilon = get_epsilon();
+    double* y = get_y();
+    for (int i = 0; i<im4*4; i++){
+        epsilon[i] = sample_trunc_norm_rng(z[i], 1.0, y[i]) - z[i];
     }
 }
 
@@ -591,6 +653,7 @@ void Phenotype::read_file(const Options& opt) {
     std::regex re("\\s+");
 
     double* epsilon = get_epsilon();
+    double* y = get_y();
     double sum = 0.0;
 
     if (infile.is_open()) {
@@ -644,27 +707,11 @@ void Phenotype::read_file(const Options& opt) {
             //exit(1);
         }
 
-        // Center and scale
-        double avg = sum / double(nonas);
-        if (opt.verbosity_level(3))
-            printf("phen avg = %20.15f\n", avg);
-
-        double sqn = 0.0;
+        // Init epsilon as a sample from truncated normal
         for (int i=0; i<data.size(); i++) {
-            if (opt.verbosity_level(3) && i < 10)
-                std::cout << data[i] - avg  << std::endl;
-            if (data[i] == std::numeric_limits<double>::max()) {
-                epsilon[i] = 0.0;
-            } else {
-                epsilon[i] = data[i] - avg;
-                sqn += epsilon[i] * epsilon[i];
-            }
+            y[i] = double(data[i]);
+            epsilon[i] = sample_trunc_norm_rng(0.0, 1.0, y[i]);
         }
-        sqn = sqrt(double(nonas-1) / sqn);
-        if (opt.verbosity_level(3))
-            printf("phen sqn = %20.15f\n", sqn);
-        for (int i=0; i<data.size(); i++)
-            epsilon[i] *= sqn;
 
     } else {
         std::cout << "FATAL: could not open phenotype file: " << filepath << std::endl;

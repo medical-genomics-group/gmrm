@@ -138,7 +138,19 @@ void Bayes::predict() {
         double* y_k = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
         check_malloc(y_k, __LINE__, __FILE__);
 
+        double* y_est = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+        check_malloc(y_est, __LINE__, __FILE__);
+
         phen.get_centered_and_scaled_y(y_k);
+
+        std::ofstream yest_stream;
+        yest_stream.open(phen.get_outyest_fp());
+        for (int i=0; i<im4*4; i++){
+            y_est[i] == 0.0;
+            if(g[i] > 0.0) y_est[i] = 1.0;
+            yest_stream << y_est[i] << std::endl;
+        }
+        yest_stream.close();
 
         //EO: already done when computing original epsilon when reading .phen
 	//phen.set_nas_to_zero(y_k, im4*4);
@@ -344,6 +356,15 @@ void Bayes::process() {
         if (rank == 0)
             printf("\n\n@@@ ITERATION %5d\n", it);
 
+        for (auto& phen : pmgr.get_phens()) {
+
+            // Init residual based on current latent variable 
+            phen.init_epsilon();
+
+            // Init latent to 0
+            phen.init_latent();
+        }
+        
         int pidx = 0;
         for (auto& phen : pmgr.get_phens()) {
             pidx += 1;
@@ -356,6 +377,7 @@ void Bayes::process() {
             }
             phen.set_mu(phen.sample_norm_rng());
             //printf("new mu = %20.15f\n", phen.get_mu());
+            phen.offset_latent(phen.get_mu());
             phen.offset_epsilon(-phen.get_mu());
             //**BUG in original phen.epsilon_stats();
 
@@ -376,7 +398,7 @@ void Bayes::process() {
 
             bool share_mrk = false;
             for (int i=0; i<NPHEN*3; i++)
-                dbetas[i] = 0.0;
+                dbetas[i] = 0.0;        
             int mloc = 0;
 
             if (mrki < M) {
@@ -478,6 +500,9 @@ void Bayes::process() {
 
                     dbeta -= phen.get_marker_beta(mloc);
 
+                    // Add current marker effect to latent variable
+                    unsigned char* bed = &bed_data[mloc * mbytes];
+                    phen.update_latent(mloc, bed);
                     //printf("iteration %3d, rank %3d, marker %5d: dbeta = %20.15f, pheni = %d, %20.15f %20.15f\n", it, rank, mloc, dbeta, pheni, dbetas[pheni + 1], dbetas[pheni + 2]);
 
                     if (abs(dbeta) > 0.0) {
@@ -624,9 +649,9 @@ void Bayes::process() {
 
             // Broadcast sigmaG of rank 0
             check_mpi(MPI_Bcast(phen.get_sigmag()->data(), phen.get_sigmag()->size(), MPI_DOUBLE, 0, MPI_COMM_WORLD), __LINE__, __FILE__);
-            for (int i=0; i<opt.get_ngroups(); i++) {
+            //for (int i=0; i<opt.get_ngroups(); i++) {
                 //printf("i:%d r:%d p:%d g:%d:  sigmag = %20.15f\n", it, rank, pheni, i, phen.get_sigmag_for_group(i));
-            }
+            //}
 
             double e_sqn = phen.epsilon_sumsqr();
             //printf("i:%d r:%d p:%d  e_sqn = %20.15f\n", it, rank, pheni, e_sqn);
