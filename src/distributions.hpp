@@ -1,6 +1,7 @@
 #pragma once
 
 #include <boost/random.hpp>
+#include <math.h>
 
 class Distributions {
 
@@ -59,7 +60,7 @@ public:
     }
 
     double trunc_norm_rng(double mean, double sigma2, double trunc){
-        const int max_it = 100000;
+        const int max_it = INT_MAX;
         double x;
         if(trunc == 1.0){
             int i = 0;

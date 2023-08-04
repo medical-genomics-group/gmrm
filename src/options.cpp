@@ -149,6 +149,25 @@ void Options::read_command_line_options(int argc, char** argv) {
             ref_bim_file = argv[++i];
             ss << "--ref-bim-file " << ref_bim_file << "\n";
 
+        } else if (!strcmp(argv[i], "--cov-file")) {
+            if (i == argc - 1) fail_if_last(argv, i);
+            cov_file = argv[++i];
+            ss << "--cov-file " << cov_file << "\n";
+
+        } else if (!strcmp(argv[i], "--cov-num")) {
+            if (i == argc - 1) fail_if_last(argv, i);
+            if (atoi(argv[i + 1]) < 0) {
+                std::cout << "FATAL  : cov-num --number of covariates has to be a unsigned integer! (" << argv[i + 1] << " was passed)" << std::endl;
+                exit(EXIT_FAILURE);
+            }
+            cov_num = (unsigned int) atoi(argv[++i]);
+            ss << "--cov-num " << cov_num << "\n";
+
+        } else if (!strcmp(argv[i], "--in-name-base")) {
+            if (i == argc - 1) fail_if_last(argv, i);
+            in_fname_base = argv[++i];
+            ss << "--in-name-base " << in_fname_base << "\n";
+
         } else {
             std::cout << "FATAL: option \"" << argv[i] << "\" unknown\n";
             exit(EXIT_FAILURE);

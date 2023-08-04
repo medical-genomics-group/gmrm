@@ -11,7 +11,7 @@
 #include "na_lut.hpp"
 #include "xfiles.hpp"
 #include <boost/math/special_functions/gamma.hpp>
-
+#include <regex>
 
 void Bayes::predict() {
 
@@ -26,6 +26,8 @@ void Bayes::predict() {
 
     cross_bim_files();
 
+    int C = opt.get_cov_num();
+
     int pidx = 0;
     for (auto& phen : pmgr.get_phens()) {
         pidx += 1;
@@ -35,6 +37,23 @@ void Bayes::predict() {
 
         const std::vector<unsigned char> mask4 = phen.get_mask4();
         const int im4 = phen.get_im4();
+
+        if(C > 0) {
+            phen.load_cov_deltas();
+            phen.set_Z(Z);
+            phen.avg_deltas_it(1000);
+        }
+        std::vector<double>* deltas = phen.get_deltas();
+
+        double* c = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+        check_malloc(c, __LINE__, __FILE__);
+        
+        for (int i=0; i<im4*4; i++){
+            c[i] = 0.0;
+            for(int covi = 0; covi<C; covi++){
+                c[i] += deltas->at(covi) * Z[i][covi];
+            }
+        }
 
         fh = phen.get_inbet_fh();
         check_mpi(MPI_File_get_size(*fh, &file_size), __LINE__, __FILE__);
@@ -138,17 +157,16 @@ void Bayes::predict() {
         double* y_k = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
         check_malloc(y_k, __LINE__, __FILE__);
 
-        double* y_est = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
-        check_malloc(y_est, __LINE__, __FILE__);
-
         phen.get_centered_and_scaled_y(y_k);
 
         std::ofstream yest_stream;
         yest_stream.open(phen.get_outyest_fp());
-        for (int i=0; i<im4*4; i++){
-            y_est[i] == 0.0;
-            if(g[i] > 0.0) y_est[i] = 1.0;
-            yest_stream << y_est[i] << std::endl;
+        for (int i=0; i<N; i++){
+            double z = g[i] + c[i] + phen.get_zmu();
+            //y_est[i] = 0.0;
+            //if(z > 0.0) y_est[i] = 1.0;
+
+            yest_stream << z << std::endl;
         }
         yest_stream.close();
 
@@ -346,6 +364,9 @@ void Bayes::process() {
         //printf("sample sigmag[0] = %20.15f\n", phen.get_sigmag()->at(0));
     }
 
+    // number of covariates
+    int C = opt.get_cov_num();
+
     const int NPHEN =  pmgr.get_phens().size();
     bool recv_update[nranks];
 
@@ -361,6 +382,22 @@ void Bayes::process() {
             // Init residual based on current latent variable 
             phen.init_epsilon();
 
+            double* z_ = phen.get_z();
+            if (rank == 0){
+                double z_mean = 0.0;
+                //double* epsilon_ = phen.get_epsilon();
+                //double* y_ = phen.get_y();
+                for (int i=0; i<N; i++) {
+                    z_mean += z_[i];      
+                    //printf("epsilon=%0.4f, z=%0.4f, y=%0.4f \n", epsilon_[i], z_[i], y_[i]);
+                    //fflush(stdout);
+                }
+                z_mean /= double(N);
+                printf("z_mean = %0.4f\n",z_mean);
+                
+            }
+            //fflush(stdout);
+            
             // Init latent to 0
             phen.init_latent();
         }
@@ -378,6 +415,7 @@ void Bayes::process() {
             phen.set_mu(phen.sample_norm_rng());
             //printf("new mu = %20.15f\n", phen.get_mu());
             phen.offset_latent(phen.get_mu());
+
             phen.offset_epsilon(-phen.get_mu());
             //**BUG in original phen.epsilon_stats();
 
@@ -389,6 +427,36 @@ void Bayes::process() {
             phen.reset_cass();
         }
         fflush(stdout);
+
+        // Covariates
+        if(C > 0){
+            for(int covi = 0; covi < C; covi++){
+                for (auto& phen : pmgr.get_phens()) {
+                    // Update epsilon with respect to previous covariate effect
+                    double delta = phen.get_cov_delta(covi);
+                    phen.epsilon_update_cov(covi, delta);
+
+                    double cov_num = phen.cov_dot_product(covi);
+                    double cov_denom = phen.get_cov_denom(covi);
+                    double delta_new = 0.0;
+
+                    if(cov_denom > 0){
+                        // Sample new covariate effect delta
+                        delta_new = phen.sample_norm_rng(cov_num / cov_denom, 1.0 / cov_denom);
+                    }
+                    phen.set_cov_delta(covi, delta_new);
+                    //printf("New delta[%d] = %0.6f\n", covi, delta_new);
+                    //fflush(stdout);
+
+                    // add covariate effect to latent variable
+                    phen.update_latent_cov(covi, delta_new);
+
+                    // Update epsilon with respect to the new covariate effect
+                    phen.epsilon_update_cov(covi, -delta_new);
+                }
+            }
+        }
+        //fflush(stdout);
 
         double dbetas[NPHEN * 3]; // [ dbeta:mave:msig | ... | ]
 
@@ -679,6 +747,7 @@ void Bayes::process() {
         if (rank == 0)
             printf("RESULT : It %d  total proc time = %7.3f sec, with sync time = %7.3f\n", it, te_it - ts_it, t_it_sync);
 
+        int C = opt.get_cov_num();
 
         // Write output files
         if (it % opt.get_output_thin_rate() == 0) {
@@ -687,6 +756,8 @@ void Bayes::process() {
                 if (rank == 0) {
                     //phen.print_pi_est();
                     write_ofile_csv(*(phen.get_outcsv_fh()), it,  phen.get_sigmag(), phen.get_sigmae(), phen.get_m0_sum(), nthinned, phen.get_pi_est());
+                    if(C > 0)
+                        write_ofile_cov(*(phen.get_outcov_fh()), it,  phen.get_deltas(), nthinned);
                 }
                 write_ofile_h1(*(phen.get_outbet_fh()), rank, Mt, it, nthinned, S, M, phen.get_betas().data(), MPI_DOUBLE);
                 write_ofile_h1(*(phen.get_outcpn_fh()), rank, Mt, it, nthinned, S, M, phen.get_comp().data(),  MPI_INTEGER);
@@ -801,6 +872,8 @@ void Bayes::setup_processing() {
     mbytes = (N %  4) ? (size_t) N /  4 + 1 : (size_t) N /  4;
     load_genotype();
 
+    load_covariates();
+
     pmgr.read_phen_files(opt, get_N(), get_M());
 
     check_processing_setup();
@@ -819,6 +892,8 @@ void Bayes::setup_processing() {
     if (opt.predict()) return;
 
     for (auto& phen : pmgr.get_phens()) {
+
+        phen.set_Z(Z); // set covariates 
         phen.set_prng_m((unsigned int)(opt.get_seed() + (rank + 0)));
         if (opt.mimic_hydra()) {
             phen.set_prng_d((unsigned int)(opt.get_seed() + (rank + 0) * 1000));
@@ -922,6 +997,131 @@ void Bayes::load_genotype() {
     if (rank >= 0)
         printf("INFO   : time to load genotype data = %.2f seconds.\n", te - ts);
 
+}
+
+// values should be separate with space delimiter
+void Bayes::load_covariates(){ 
+
+    std::string covfp = opt.get_cov_file();
+    int C = opt.get_cov_num();
+    if (C == 0)
+        return;
+
+    double ts = MPI_Wtime();
+
+    std::ifstream covf(covfp);
+    std::string line; 
+    std::regex re("\\s+");
+
+    int line_i = 0;
+
+    while (std::getline(covf, line)) // read the current line
+    {
+        
+        if(line_i == 0) {
+            line_i++;
+            continue; //skip header
+        }
+
+        int Cobs = 0;
+        std::vector<double> entries;
+        std::sregex_token_iterator iter(line.begin(), line.end(), re, -1);
+        std::sregex_token_iterator re_end;
+        
+        ++iter; // skip individual ID
+        ++iter; // skip family ID
+        for ( ; iter != re_end; ++iter){
+            entries.push_back(std::stod(*iter));
+            Cobs++;
+        }
+
+        if (Cobs != C){
+            printf("FATAL   : number of covariates = %d does not match to the specified number of covariates = %d.\n", Cobs, C);
+            exit(EXIT_FAILURE);
+        }
+        Z.push_back(entries); 
+        line_i++;     
+    }
+    if (rank == 0)
+        printf("INFO   : Number of loaded lines from .cov file = %d \n", line_i - 1);
+    
+    const int m4 = (line_i - 1) % 4;
+    if (m4 != 0) {
+        for (int i=m4; i<4; i++) {
+            Z.push_back(std::vector<double>(C, 0.0));
+        }
+    }
+
+    double te = MPI_Wtime();
+
+    if (rank == 0)
+        printf("INFO   : time to load %d covariates = %.2f seconds.\n", C, te - ts);
+
+    // DEBUG
+    /*
+    for(int covi = 0; covi < C; covi++){
+        long double cavg = 0.0;
+        long double csig = 0.0;
+        for (int i = 0; i < N; i++) {
+            cavg += Z[i][covi];    
+        }
+        cavg = cavg / double(N);
+
+        for (int i = 0; i < N; i++) {
+            csig += ((Z[i][covi] - cavg) * (Z[i][covi] - cavg));            
+        }
+        csig = sqrt(csig / double(N));
+        
+        if (rank == 0){
+            std::cout << "cavg[" << covi << "]" << "=" << cavg << std::endl;
+            std::cout << "csig[" << covi << "]" << "=" << csig << std::endl;
+        }
+    }*/
+    
+    // Normalize covariates
+    for(int covi = 0; covi < C; covi++){
+            
+        long double cavg = 0.0;
+        long double csig = 0.0;
+
+        for (int i = 0; i < N; i++) {
+            cavg += Z[i][covi];    
+        }
+        cavg = cavg / double(N);
+
+        for (int i = 0; i < N; i++) {
+            csig += ((Z[i][covi] - cavg) * (Z[i][covi] - cavg));            
+        }
+        csig = sqrt(csig / double(N));
+
+        for (int i = 0; i < N; i++) {
+            if(csig < 0.00000001)
+                Z[i][covi] = 0;
+            else 
+                Z[i][covi] = (Z[i][covi] - cavg) / csig;
+        }
+    }
+
+    // DEBUG
+    /*
+    for(int covi = 0; covi < C; covi++){
+        long double cavg = 0.0;
+        long double csig = 0.0;
+        for (int i = 0; i < N; i++) {
+            cavg += Z[i][covi];    
+        }
+        cavg = cavg / double(N);
+
+        for (int i = 0; i < N; i++) {
+            csig += ((Z[i][covi] - cavg) * (Z[i][covi] - cavg));            
+        }
+        csig = sqrt(csig / double(N));
+        
+        if (rank == 0){
+            std::cout << "cavg[" << covi << "]" << "=" << cavg << std::endl;
+            std::cout << "csig[" << covi << "]" << "=" << csig << std::endl;
+        }
+    }*/
 }
 
 

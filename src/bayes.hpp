@@ -99,6 +99,9 @@ private:
     std::vector<std::string>   rsid;
     std::map<std::string, int> m_refrsid;
 
+    std::vector<std::vector<double>> Z; //Covariates
+    std::vector<double> delta; // Covariate effects
+
     int S = 0;              // task marker start 
     int M = 0;              // task marker length
     int Mm = 0;
@@ -108,6 +111,7 @@ private:
     void setup_processing();
     void set_block_of_markers();
     void load_genotype();
+    void load_covariates();
     void check_processing_setup();
     void read_group_index_file(const std::string& file);
 };

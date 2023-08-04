@@ -37,6 +37,9 @@ public:
     int get_nmixtures() const { return nmixtures; }
     const std::vector<std::vector<double>>& get_cva()  const { return cva;  }
     const std::vector<std::vector<double>>& get_cvai() const { return cvai; }
+    std::string get_cov_file() const { return cov_file; };
+    int get_cov_num() const { return cov_num; };
+    std::string get_infname_base() const { return in_fname_base; };
 
 private:
     std::string bed_file = "";
@@ -64,4 +67,7 @@ private:
     void fail_if_last(char** argv, const int i);
     void read_group_mixture_file();
     std::vector<std::vector<double>> cva, cvai;
+    std::string cov_file = "";
+    int cov_num = 0;
+    std::string in_fname_base = "";
 };

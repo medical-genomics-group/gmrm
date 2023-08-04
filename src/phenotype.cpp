@@ -8,6 +8,7 @@
 #include "phenotype.hpp"
 #include "dotp_lut.hpp"
 #include "na_lut.hpp"
+#include "distributions.hpp"
 #include <boost/range/algorithm.hpp>
 #include <boost/random/uniform_int.hpp>
 #include <filesystem>
@@ -21,7 +22,12 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     M(M),
     im4(N%4 == 0 ? N/4 : N/4+1),
     K(opt.get_nmixtures()),
+    C(opt.get_cov_num()),
     G(opt.get_ngroups()) {
+
+    deltas = std::vector<double> (C, 0.0);
+    cov_denom = std::vector<double> (C, 0.0);
+    //Z_ = std::vector<std::vector<double>> (im4*4, std::vector<double>(C));
 
     mave = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
     check_malloc(mave, __LINE__, __FILE__);
@@ -51,7 +57,7 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
         dirich.clear();
         for (int i=0; i<K; i++) dirich.push_back(1.0);
     } else {
-        set_prediction_filenames(opt.get_out_dir());
+        set_prediction_filenames(opt.get_out_dir(), opt.get_infname_base());
     }
 
     set_output_filenames(opt.get_out_dir());
@@ -123,14 +129,17 @@ int Phenotype::get_m0_sum() {
 }
 
 // Set input filenames based on input phen file (as per output)
-void Phenotype::set_prediction_filenames(const std::string out_dir) {
+void Phenotype::set_prediction_filenames(const std::string out_dir, const std::string in_fname_base) {
     fs::path pphen = filepath;
     fs::path base  = out_dir;
     base /= pphen.stem();
-    fs::path pibet = base;
-    pibet.replace_extension(".bet");
-    inbet_fp = pibet.string();
-    //std::cout << "inbet_fp = " << inbet_fp << std::endl;
+    //fs::path pibet = base;
+    //pibet.replace_extension(".bet");
+    //inbet_fp = pibet.string();
+
+    inbet_fp = out_dir + "/" + in_fname_base + ".bet";
+    
+    std::cout << "inbet_fp = " << inbet_fp << std::endl;
 
     fs::path pmlma = base;
     pmlma += ".mlma";
@@ -140,6 +149,12 @@ void Phenotype::set_prediction_filenames(const std::string out_dir) {
     pyest += ".yest";
     outyest_fp = pyest.string();
     std::cout << outyest_fp << std::endl;
+
+    //fs::path pcov = base;
+    //pcov += "_cov.csv";
+    //incov_fp = pcov.string();
+    incov_fp = out_dir + "/" + in_fname_base + "_cov.csv";
+    std::cout << "incov_fp = " << incov_fp << std::endl;
 }
 
 void Phenotype::set_output_filenames(const std::string out_dir) {
@@ -152,10 +167,13 @@ void Phenotype::set_output_filenames(const std::string out_dir) {
     pcpn += ".cpn";
     fs::path pcsv = base;
     pcsv += ".csv";
+    fs::path pcov = base;
+    pcov += "_cov.csv";
 
     outbet_fp = pbet.string();
     outcpn_fp = pcpn.string();
     outcsv_fp = pcsv.string();
+    outcov_fp = pcov.string();
 }
 
 // Input and output
@@ -204,18 +222,26 @@ void Phenotype::open_output_files() {
                             MPI_INFO_NULL,
                             get_outcsv_fh()),
               __LINE__, __FILE__);
+    check_mpi(MPI_File_open(MPI_COMM_WORLD,
+                            get_outcov_fp().c_str(),
+                            MPI_MODE_CREATE | MPI_MODE_WRONLY | MPI_MODE_EXCL,
+                            MPI_INFO_NULL,
+                            get_outcov_fh()),
+              __LINE__, __FILE__);
 }
 
 void Phenotype::close_output_files() {
     check_mpi(MPI_File_close(get_outbet_fh()), __LINE__, __FILE__);
     check_mpi(MPI_File_close(get_outcpn_fh()), __LINE__, __FILE__);
     check_mpi(MPI_File_close(get_outcsv_fh()), __LINE__, __FILE__);
+    check_mpi(MPI_File_close(get_outcov_fh()), __LINE__, __FILE__);
 }
 
 void Phenotype::delete_output_files() {
     MPI_File_delete(get_outbet_fp().c_str(), MPI_INFO_NULL);
     MPI_File_delete(get_outcpn_fp().c_str(), MPI_INFO_NULL);
     MPI_File_delete(get_outcsv_fp().c_str(), MPI_INFO_NULL);
+    MPI_File_delete(get_outcov_fp().c_str(), MPI_INFO_NULL);
 }
 
 void Phenotype::print_cass() {
@@ -345,7 +371,7 @@ void Phenotype::shuffle_midx(const bool mimic_hydra) {
 // Set latent variable to 0 for all individuals
 void Phenotype::init_latent(){
     double* z = get_z();
-    for (int i=0; i<im4*4; i++) z[i] = 0.0;
+    for (int i=0; i<im4*4; i++) z[i] = z_mu;
 }
 
 // Update latent variable based on current marker and effect
@@ -374,17 +400,113 @@ void Phenotype::offset_latent(const double offset) {
     }
 }
 
+// Update latent variable based on current covariate effect delta
+void Phenotype::update_latent_cov(const int covi, double delta) {
+    double* z = get_z();
+    for (int i=0; i<im4; i++) {
+        const int masi = mask4[i] * 4;
+        for (int j=0; j<4; j++) {
+            double offset = Z_[i*4 + j][covi] * delta;
+            z[i*4 + j] += offset * na_lut[masi + j];
+        }
+    }
+}
+
 // Sample artificial target from truncated normal and update residual 
 void Phenotype::init_epsilon(){
     double* z = get_z();
     double* epsilon = get_epsilon();
     double* y = get_y();
-    for (int i = 0; i<im4*4; i++){
-        epsilon[i] = sample_trunc_norm_rng(z[i], 1.0, y[i]) - z[i];
+    for (int i=0; i<im4; i++) {
+        const int masi = mask4[i] * 4;
+        for (int j=0; j<4; j++) {
+            epsilon[i*4 + j] = sample_trunc_norm_rng(z[i*4 + j] * na_lut[masi + j], 1.0, y[i*4 + j]) - (z[i*4 + j] * na_lut[masi + j]); 
+        }
     }
 }
 
-// Add contributions to base epsilon
+// Update epsilon based on current covariate effect delta 
+void Phenotype::epsilon_update_cov(const int covi, double delta) {
+    double* epsilon = get_epsilon();
+    for (int i=0; i<im4; i++) {
+        const int masi = mask4[i] * 4;
+        for (int j=0; j<4; j++) {
+            epsilon[i*4 + j] += delta * Z_[i*4 + j][covi] * na_lut[masi + j];
+        }
+    }
+}
+
+// Dot product for covariates
+double  Phenotype::cov_dot_product(int covi){
+    double* epsilon = get_epsilon();
+    double Ze = 0.0;
+    for (int i=0; i<im4; i++) {
+        const int masi = mask4[i] * 4;
+        for (int j=0; j<4; j++) {
+            Ze += epsilon[i*4 + j] * Z_[i*4 + j][covi] * na_lut[masi + j];
+        }
+    }
+    return Ze;
+}
+
+void Phenotype::load_cov_deltas(){
+
+    double ts = MPI_Wtime();
+
+    std::ifstream covf(incov_fp);
+    std::string line; 
+    std::regex re("\\s+");
+
+    int line_i = 0;
+
+    while (std::getline(covf, line)) // read the current line
+    {
+        
+        //if(line_i == 0) {
+        //    line_i++;
+        //    continue; //skip header
+        //}
+
+        int Cobs = 0;
+        std::vector<double> entries;
+        std::sregex_token_iterator iter(line.begin(), line.end(), re, -1);
+        std::sregex_token_iterator re_end;
+        
+        ++iter; // skip line number
+        ++iter; // skip iteration
+        ++iter; // skip number of covariates
+        for ( ; iter != re_end; ++iter){
+            entries.push_back(std::stod(*iter));
+            Cobs++;
+        }
+
+        if (Cobs != C){
+            printf("FATAL   : number of covariate deltas = %d does not match to the specified number of covariates = %d.\n", Cobs, C);
+            exit(EXIT_FAILURE);
+        }
+        
+        deltas_it.push_back(entries); 
+        line_i++;   
+    }
+
+    printf("INFO   : Number of loaded lines from _cov.csv file = %d \n", line_i);
+
+    double te = MPI_Wtime();
+
+    printf("INFO   : time to load %d covariate effects = %.2f seconds.\n", C, te - ts);
+}
+
+/*
+double Phenotype::get_cov_denom(int covi){
+    double cov_denom = 0.0;
+    for (int i = 0; i<im4*4; i++){
+        cov_denom += Z[i][covi] * Z[i][covi];
+    }
+    return cov_denom;
+}
+*/
+
+// Add beta contributions to base epsilon
 void Phenotype::update_epsilon(const double* dbeta, const unsigned char* bed) {
 
     const double bs_ = dbeta[0] * dbeta[2]; // lambda = dbeta / marker_sig
@@ -707,11 +829,21 @@ void Phenotype::read_file(const Options& opt) {
             //exit(1);
         }
 
+        N_pos = 0;
+
         // Init epsilon as a sample from truncated normal
-        for (int i=0; i<data.size(); i++) {
-            y[i] = double(data[i]);
-            epsilon[i] = sample_trunc_norm_rng(0.0, 1.0, y[i]);
+        for (int i=0; i<im4; i++) {
+            const int masi = mask4[i] * 4;
+            for (int j=0; j<4; j++) {
+                y[i*4 + j] = double(data[i*4 + j]);
+                if(y[i*4 + j] == 1.0) N_pos++;
+                epsilon[i*4 + j] = sample_trunc_norm_rng(0.0, 1.0, y[i*4 + j]) * na_lut[masi + j];
+                //std::cout << i*4 + j << ": " << epsilon[i*4 + j] << std::endl;
+            }
         }
+
+        //z_mu = dist_d.normal_inv_cdf(double(N_pos) / double(N), 0.0, 1.0);
+        std::cout << "z_mu = " << z_mu << std::endl;
 
     } else {
         std::cout << "FATAL: could not open phenotype file: " << filepath << std::endl;

@@ -45,3 +45,25 @@ void write_ofile_csv(const MPI_File fh, const uint iteration, const std::vector<
     MPI_Offset offset = size_t(n_thinned_saved) * strlen(buff);
     check_mpi(MPI_File_write_at(fh, offset, &buff, strlen(buff), MPI_CHAR, &status), __LINE__, __FILE__);
 }
+
+// Covariates out file
+void write_ofile_cov(const MPI_File fh, const uint iteration, const std::vector<double>* delta, const uint n_thinned_saved) {
+
+    MPI_Status status;
+    
+    char buff[LENBUF];
+
+    int cx = snprintf(buff, LENBUF, "%5d, %4d", iteration, (int) delta->size());
+    assert(cx >= 0 && cx < LENBUF);
+        
+    for(int i=0; i<delta->size(); i++){
+        cx = snprintf(&buff[strlen(buff)], LENBUF - strlen(buff), ", %20.15f", delta->at(i));
+        assert(cx >= 0 && cx < LENBUF - strlen(buff));
+    }
+
+    cx = snprintf(&buff[strlen(buff)], LENBUF - strlen(buff), "\n");
+    assert(cx >= 0 && cx < LENBUF - strlen(buff));
+        
+    MPI_Offset offset = size_t(n_thinned_saved) * strlen(buff);
+    check_mpi(MPI_File_write_at(fh, offset, &buff, strlen(buff), MPI_CHAR, &status), __LINE__, __FILE__);
+}
