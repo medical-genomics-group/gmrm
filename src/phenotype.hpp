@@ -7,7 +7,7 @@
 #include "options.hpp"
 #include "distributions.hpp"
 #include "utilities.hpp"
-
+#include "na_lut.hpp"
 
 class Phenotype {
 
@@ -16,15 +16,19 @@ private:
     Distributions dist_d; // for sampling the distributions
     std::string filepath;
     std::string inbet_fp;
+    std::string incov_fp;
     std::string outmlma_fp;
+    std::string outyest_fp;
     std::string outbet_fp;
     std::string outcpn_fp;
     std::string outcsv_fp;
+    std::string outcov_fp;
     MPI_File inbet_fh;
     MPI_File outmlma_fh;
     MPI_File outbet_fh;
     MPI_File outcpn_fh;
     MPI_File outcsv_fh;
+    MPI_File outcov_fh;
     int nonas = 0;
     int nas   = 0;
     int im4   = 0;
@@ -32,7 +36,12 @@ private:
     const unsigned int N = 0;
     const unsigned int G = 0;
     const unsigned int K = 0;
+    const unsigned int C = 0;
     std::vector<double> betas;
+    std::vector<double> deltas;
+    std::vector<std::vector<double>> deltas_it;
+    std::vector<double> cov_denom;
+    std::vector<std::vector<double>> Z_;
     std::vector<double> data;
     std::vector<unsigned char> mask4;
     std::vector<int> midx;
@@ -71,15 +80,19 @@ public:
 
     std::string get_filepath()   const { return filepath; }
     std::string get_inbet_fp()   const { return inbet_fp; }
+    std::string get_incov_fp()   const { return incov_fp; }
     std::string get_outmlma_fp() const { return outmlma_fp; }
+    std::string get_outyest_fp() const { return outyest_fp; }
     std::string get_outbet_fp()  const { return outbet_fp; }
     std::string get_outcpn_fp()  const { return outcpn_fp; }
     std::string get_outcsv_fp()  const { return outcsv_fp; }
+    std::string get_outcov_fp()  const { return outcov_fp; }
     MPI_File* get_inbet_fh()   { return &inbet_fh; }
     MPI_File* get_outmlma_fh() { return &outmlma_fh; }
     MPI_File* get_outbet_fh()  { return &outbet_fh; }
     MPI_File* get_outcpn_fh()  { return &outcpn_fh; }
     MPI_File* get_outcsv_fh()  { return &outcsv_fh; }
+    MPI_File* get_outcov_fh()  { return &outcov_fh; }
     void print_info() const;
     std::vector<unsigned char>& get_mask4() { return mask4; }
     std::vector<int>&           get_midx()  { return midx; }
@@ -88,6 +101,7 @@ public:
     std::vector<double>&        get_logl()  { return logl; }
     std::vector<double>&        get_acum()  { return acum; }
     std::vector<double>&        get_betas() { return betas; }
+    std::vector<double>*        get_deltas() { return &deltas; }
     std::vector<int>&           get_comp()  { return comp; }
     //std::vector<std::vector<double>>&  get_pi_est() { return pi_est; }
     std::vector<std::vector<double>>*  get_pi_est() { return &pi_est; }
@@ -146,11 +160,35 @@ public:
     void    set_marker_beta(const int idx, const double val) { betas[idx] = val; }
     double  get_marker_beta(const int idx) { return betas[idx]; }
 
+    void    set_cov_delta(const int idx, const double val) { deltas[idx] = val; }
+    double  get_cov_delta(const int idx) { return deltas[idx]; }
+    double  cov_dot_product(int covi);
+    double  get_cov_denom(int covi) { return cov_denom[covi]; };
+    void    set_Z(std::vector<std::vector<double>> Z) { 
+        Z_ = Z;
+        for(int covi = 0; covi < C; covi++){
+            cov_denom[covi] = 0.0;
+            for (int i = 0; i < N; i++) {
+                cov_denom[covi] += Z_[i][covi] * Z_[i][covi];   
+            }
+        }
+    }
+    void load_cov_deltas();
+    void avg_deltas_it(int niter) {
+        for(int covi = 0; covi < C; covi++){
+            deltas[covi] = 0.0;
+            for(int iter = 0; iter < niter; iter++){ 
+                deltas[covi] += deltas_it[iter][covi];
+            }
+            deltas[covi] /= double(niter);
+        }
+    }
     int    get_marker_local_index(const int shuff_idx);
     double get_marker_ave(const int idx) { return mave[idx]; }
     double get_marker_sig(const int idx) { return msig[idx]; }
 
     void   update_epsilon(const double* dbeta, const unsigned char* bed);
+    void   epsilon_update_cov(const int covi, double delta);
     double epsilon_sumsqr();
     double epsilon_sum();
 
@@ -221,7 +259,7 @@ public:
     void close_output_files();
     void delete_output_files();
 
-    void set_prediction_filenames(const std::string out_dir);
+    void set_prediction_filenames(const std::string out_dir, const std::string in_fname_base);
 
     void set_nas_to_zero(double* y, const int N);
 

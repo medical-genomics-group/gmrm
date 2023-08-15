@@ -11,7 +11,7 @@
 #include "na_lut.hpp"
 #include "xfiles.hpp"
 #include <boost/math/special_functions/gamma.hpp>
-
+#include <regex>
 
 void Bayes::predict() {
 
@@ -25,6 +25,8 @@ void Bayes::predict() {
     MPI_File*  fh;
 
     cross_bim_files();
+
+    int C = opt.get_cov_num();
 
     int pidx = 0;
     for (auto& phen : pmgr.get_phens()) {
@@ -79,6 +81,23 @@ void Bayes::predict() {
         for (int j=0; j<Mtot_;j++)
             beta_sum[j] /= double(niter);
 
+        if(C > 0){
+            phen.load_cov_deltas();
+            phen.set_Z(Z);
+            phen.avg_deltas_it(niter);
+        }
+        std::vector<double>* deltas = phen.get_deltas();
+
+        double* c = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+        check_malloc(c, __LINE__, __FILE__);
+        
+        for (int i=0; i<im4*4; i++){
+            c[i] = 0.0;
+            for(int covi = 0; covi<C; covi++){
+                c[i] += deltas->at(covi) * Z[i][covi];
+            }
+        }
+        
         fflush(stdout);
         double t_1 = MPI_Wtime();
         MPI_Barrier(MPI_COMM_WORLD);
@@ -139,6 +158,14 @@ void Bayes::predict() {
         check_malloc(y_k, __LINE__, __FILE__);
 
         phen.get_centered_and_scaled_y(y_k);
+
+        std::ofstream yest_stream;
+        yest_stream.open(phen.get_outyest_fp());
+        for (int i=0; i<N; i++){
+            double z = g[i] + c[i];
+            yest_stream << z << std::endl;
+        }
+        yest_stream.close();
 
         //EO: already done when computing original epsilon when reading .phen
 	//phen.set_nas_to_zero(y_k, im4*4);
@@ -317,6 +344,8 @@ void Bayes::cross_bim_files() {
 
 void Bayes::process() {
 
+    double ts_overall = MPI_Wtime();
+
     check_openmp();
 
     for (auto& phen : pmgr.get_phens()) {
@@ -333,6 +362,9 @@ void Bayes::process() {
         phen.set_pi_est(pi_prior);
         //printf("sample sigmag[0] = %20.15f\n", phen.get_sigmag()->at(0));
     }
+
+    // number of covariates
+    int C = opt.get_cov_num();
 
     const int NPHEN =  pmgr.get_phens().size();
     bool recv_update[nranks];
@@ -367,6 +399,34 @@ void Bayes::process() {
             phen.reset_cass();
         }
         fflush(stdout);
+
+        // Covariates
+        if(C > 0){
+            for(int covi = 0; covi < C; covi++){
+                for (auto& phen : pmgr.get_phens()) {
+                    // Update epsilon with respect to previous covariate effect
+                    double delta = phen.get_cov_delta(covi);
+                    phen.epsilon_update_cov(covi, delta);
+
+                    double cov_num = phen.cov_dot_product(covi);
+                    double cov_denom = phen.get_cov_denom(covi);
+                    double delta_new = 0.0;
+
+                    if(cov_denom > 0){
+                        // Sample new covariate effect delta
+                        delta_new = phen.sample_norm_rng(cov_num / cov_denom, 1.0 / cov_denom);
+                    }
+
+                    phen.set_cov_delta(covi, delta_new);
+                    //printf("New delta[%d] = %0.6f\n", covi, delta_new);
+                    //fflush(stdout);
+
+                    // Update epsilon with respect to the new covariate effect
+                    phen.epsilon_update_cov(covi, -delta_new);
+                }
+            }
+        }
+        //fflush(stdout);
 
         double dbetas[NPHEN * 3]; // [ dbeta:mave:msig | ... | ]
 
@@ -654,7 +714,6 @@ void Bayes::process() {
         if (rank == 0)
             printf("RESULT : It %d  total proc time = %7.3f sec, with sync time = %7.3f\n", it, te_it - ts_it, t_it_sync);
 
-
         // Write output files
         if (it % opt.get_output_thin_rate() == 0) {
             const unsigned nthinned = it / opt.get_output_thin_rate() - 1;
@@ -662,6 +721,8 @@ void Bayes::process() {
                 if (rank == 0) {
                     //phen.print_pi_est();
                     write_ofile_csv(*(phen.get_outcsv_fh()), it,  phen.get_sigmag(), phen.get_sigmae(), phen.get_m0_sum(), nthinned, phen.get_pi_est());
+                    if(C > 0)
+                        write_ofile_cov(*(phen.get_outcov_fh()), it,  phen.get_deltas(), nthinned);
                 }
                 write_ofile_h1(*(phen.get_outbet_fh()), rank, Mt, it, nthinned, S, M, phen.get_betas().data(), MPI_DOUBLE);
                 write_ofile_h1(*(phen.get_outcpn_fh()), rank, Mt, it, nthinned, S, M, phen.get_comp().data(),  MPI_INTEGER);
@@ -674,6 +735,10 @@ void Bayes::process() {
 
     for (auto& phen : pmgr.get_phens())
         phen.close_output_files();
+
+    double te_overall = MPI_Wtime();
+    if (rank == 0)
+        printf("OVERALL : Overall proc time = %7.3f sec\n",te_overall - ts_overall);
 }
 
 // counts[rank]: holds either NPHEN * 3 or 0
@@ -776,6 +841,10 @@ void Bayes::setup_processing() {
     mbytes = (N %  4) ? (size_t) N /  4 + 1 : (size_t) N /  4;
     load_genotype();
 
+    int C = opt.get_cov_num();
+    if(C > 0)
+        load_covariates();
+
     pmgr.read_phen_files(opt, get_N(), get_M());
 
     check_processing_setup();
@@ -794,6 +863,7 @@ void Bayes::setup_processing() {
     if (opt.predict()) return;
 
     for (auto& phen : pmgr.get_phens()) {
+        phen.set_Z(Z); // set covariates 
         phen.set_prng_m((unsigned int)(opt.get_seed() + (rank + 0)));
         if (opt.mimic_hydra()) {
             phen.set_prng_d((unsigned int)(opt.get_seed() + (rank + 0) * 1000));
@@ -899,6 +969,91 @@ void Bayes::load_genotype() {
 
 }
 
+// values should be separate with space delimiter
+void Bayes::load_covariates(){ 
+
+    std::string covfp = opt.get_cov_file();
+    int C = opt.get_cov_num();
+    if (C==0)
+        return;
+
+    double ts = MPI_Wtime();
+
+    std::ifstream covf(covfp);
+    std::string line; 
+    std::regex re("\\s+");
+
+    int line_i = 0;
+
+    while (std::getline(covf, line)) // read the current line
+    {
+        if(line_i == 0) {
+            line_i++;
+            continue; //skip header
+        } 
+
+        int Cobs = 0;
+        std::vector<double> entries;
+        std::sregex_token_iterator iter(line.begin(), line.end(), re, -1);
+        std::sregex_token_iterator re_end;
+        
+        ++iter; // skip individual ID
+        ++iter; // skip family ID
+        for ( ; iter != re_end; ++iter){
+            entries.push_back(std::stod(*iter));
+            Cobs++;
+        }
+
+        if (Cobs != C){
+            printf("FATAL   : number of covariates = %d does not match to the specified number of covariates = %d.\n", Cobs, C);
+            exit(EXIT_FAILURE);
+        }   
+        Z.push_back(entries);
+        line_i++;       
+    }
+
+    if (rank == 0)
+        printf("INFO   : Number of loaded covariate lines from .cov file = %d \n", line_i - 1);
+
+    const int m4 = (line_i - 1) % 4;
+    if (m4 != 0) {
+        for (int i=m4; i<4; i++) {
+            Z.push_back(std::vector<double>(C, 0.0));
+        }
+    }
+
+    if (rank == 0)
+        printf("INFO   : Number of covariate lines after adjusting = %d \n", Z.size());
+
+    double te = MPI_Wtime();
+
+    if (rank == 0)
+        printf("INFO   : time to load covariates = %.2f seconds.\n", te - ts);
+    
+    // Normalize covariates
+    for(int covi = 0; covi < C; covi++){
+            
+        long double cavg = 0.0;
+        long double csig = 0.0;
+
+        for (int i = 0; i < N; i++) {
+            cavg += Z[i][covi];    
+        }
+        cavg = cavg / double(N);
+
+        for (int i = 0; i < N; i++) {
+            csig += ((Z[i][covi] - cavg) * (Z[i][covi] - cavg));            
+        }
+        csig = sqrt(csig / double(N));
+
+        for (int i = 0; i < N; i++) {
+            if(csig < 0.00000001)
+                Z[i][covi] = 0;
+            else 
+                Z[i][covi] = (Z[i][covi] - cavg) / csig;
+        }
+    }
+}
 
 void Bayes::set_block_of_markers() {
 
