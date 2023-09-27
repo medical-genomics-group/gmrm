@@ -187,7 +187,7 @@ public:
     double get_marker_ave(const int idx) { return mave[idx]; }
     double get_marker_sig(const int idx) { return msig[idx]; }
 
-    void   update_epsilon(const double* dbeta, const unsigned char* bed);
+    void   update_epsilon(const double* dbeta, const double* meth);
     void   epsilon_update_cov(const int covi, double delta);
     double epsilon_sumsqr();
     double epsilon_sum();
@@ -313,7 +313,7 @@ public:
     //    std::cout << "/!\\ Calling PhenMgr dtor" << std::endl;
     //}
     void print_info();
-    void compute_markers_statistics(const unsigned char* bed_data, const int N, const int M, const int mbytes);
+    void compute_markers_statistics(const double* meth_data, const int N, const int M, const int mbytes);
     std::vector<Phenotype>& get_phens() { return phens; }
     void display_markers_statistics(const int n);
     void read_phen_files(const Options& opt, const int N, const int M);

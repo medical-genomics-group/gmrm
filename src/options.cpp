@@ -220,7 +220,7 @@ void Options::check_options() {
             exit(EXIT_FAILURE);
         }
     }
-
+    /*
     if (predict_) {
         if (bim_file == "") {
             std::cout << "FATAL  : you need to pass a bim file with --bim-file when activating --predict" << std::endl;
@@ -230,7 +230,7 @@ void Options::check_options() {
             std::cout << "FATAL  : you need to pass a reference bim file with --ref-bim-file when activating --predict" << std::endl;
             exit(EXIT_FAILURE);
         }
-    }
+    }*/
 
     if (mimic_hydra_ && count_phen_files() > 1) {
         std::cout << "FATAL  : with --mimic-hydra, only a single phenotype can be processed." << std::endl;

@@ -31,7 +31,7 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     check_malloc(mave, __LINE__, __FILE__);
     msig = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
     check_malloc(msig, __LINE__, __FILE__);
-    epsilon_ = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+    epsilon_ = (double*) _mm_malloc(size_t(N) * sizeof(double), 32);
     check_malloc(epsilon_, __LINE__, __FILE__);
 
     if (!opt.predict()) {
@@ -92,9 +92,9 @@ Phenotype::Phenotype(const Phenotype& rhs) :
     sigmae_(rhs.sigmae_),
     sigmag(rhs.sigmag),
     mu(rhs.mu) {
-    epsilon_ = (double*) _mm_malloc(size_t(im4*4) * sizeof(double), 32);
+    epsilon_ = (double*) _mm_malloc(size_t(N) * sizeof(double), 32);
     check_malloc(epsilon_, __LINE__, __FILE__);
-    for (int i=0; i<im4*4; i++)
+    for (int i=0; i<N; i++)
         epsilon_[i] = rhs.epsilon_[i];
     mave = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
     check_malloc(mave, __LINE__, __FILE__);
@@ -283,6 +283,7 @@ double Phenotype::epsilon_sumsqr() {
 }
 
 void Phenotype::increment_beta_sqn(const int group, const double val) {
+    if(val != val) std::cout << "NAN" << std::endl;
     beta_sqn.at(group) += val;
 }
 
@@ -347,11 +348,8 @@ void Phenotype::shuffle_midx(const bool mimic_hydra) {
 // Update epsilon based on current covariate effect delta 
 void Phenotype::epsilon_update_cov(const int covi, double delta) {
     double* epsilon = get_epsilon();
-    for (int i=0; i<im4; i++) {
-        const int masi = mask4[i] * 4;
-        for (int j=0; j<4; j++) {
-            epsilon[i*4 + j] += delta * Z_[i*4 + j][covi] * na_lut[masi + j];
-        }
+    for (int i=0; i<N; i++) {
+        epsilon[i] += delta * Z_[i][covi];
     }
 }
 
@@ -359,11 +357,8 @@ void Phenotype::epsilon_update_cov(const int covi, double delta) {
 double  Phenotype::cov_dot_product(int covi){
     double* epsilon = get_epsilon();
     double Ze = 0.0;
-    for (int i=0; i<im4; i++) {
-        const int masi = mask4[i] * 4;
-        for (int j=0; j<4; j++) {
-            Ze += epsilon[i*4 + j] * Z_[i*4 + j][covi] * na_lut[masi + j];
-        }
+    for (int i=0; i<N; i++) {
+        Ze += epsilon[i] * Z_[i][covi];
     }
     return Ze;
 }
@@ -411,73 +406,19 @@ void Phenotype::load_cov_deltas(){
 }
 
 // Add contributions to base epsilon
-void Phenotype::update_epsilon(const double* dbeta, const unsigned char* bed) {
-
-    const double bs_ = dbeta[0] * dbeta[2]; // lambda = dbeta / marker_sig
-    const double mdb = -dbeta[1];
-    //printf(" Phenotype::update_epsilon with dbeta = %20.15f, ave = %20.15f, bet/sig = %20.15f\n", dbeta[0], dbeta[1], bs_);
+void Phenotype::update_epsilon(const double* dbeta, const double* meth) {
 
     double* epsilon = get_epsilon();
-
-#ifdef MANVECT
-    const __m256d mu = _mm256_set1_pd(-1.0 * dbeta[1]);
-    const __m256d bs = _mm256_set1_pd(bs_);
-#ifdef __INTEL_COMPILER
-    __assume_aligned(epsilon, 32);
-    __assume_aligned(&na_lut, 32);
-    __assume_aligned(&dotp_lut_a, 32);
-    __assume_aligned(&dotp_lut_b, 32);
-#endif
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static)
-#endif
-    for (int i=0; i<im4; i++) {
-        __m256d luta  = _mm256_load_pd(&dotp_lut_ab[bed[i] * 8]);
-        __m256d lutb  = _mm256_load_pd(&dotp_lut_ab[bed[i] * 8 + 4]);
-        __m256d tmp1  = _mm256_fmadd_pd(mu, lutb, luta);
-        __m256d lutna = _mm256_load_pd(&na_lut[mask4[i] * 4]);
-        __m256d tmp2  = _mm256_mul_pd(bs, tmp1);
-        __m256d eps4  = _mm256_load_pd(&epsilon[i*4]);
-        __m256d tmp3  = _mm256_fmadd_pd(lutna, tmp2, eps4);
-        _mm256_store_pd(&epsilon[i*4], tmp3);
-    }
-/*
-#ifdef _OPENMP
-#pragma omp parallel for schedule(static)
-#endif
-    for (int i=0; i<im4; i++) {
-        eps4  = _mm256_load_pd(&epsilon[i*4]);
-        lutna = _mm256_load_pd(&na_lut[mask4[i] * 4]);
-        luta  = _mm256_load_pd(&dotp_lut_a[bed[i] * 4]);
-        lutb  = _mm256_load_pd(&dotp_lut_b[bed[i] * 4]);
-        deps4 = _mm256_fmadd_pd(mu, lutb, luta);
-        deps4 = _mm256_mul_pd(deps4, bs);
-        deps4 = _mm256_mul_pd(deps4, lutna);
-        eps4  = _mm256_add_pd(eps4, deps4);
-        _mm256_store_pd(&epsilon[i*4], eps4);
-    }
-*/
-
-#else
-
+    const double db = dbeta[0];
+    const double sig_inv = dbeta[2];
+    const double ave = dbeta[1];
+            
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
-    for (int i=0; i<im4; i++) {
-        const int bedi = bed[i] * 4;
-        const int masi = mask4[i] * 4;
-#ifdef _OPENMP
-#pragma omp simd aligned(epsilon, dotp_lut_a, dotp_lut_b, na_lut : 32) simdlen(4)
-#endif
-        for (int j=0; j<4; j++) {
-            double a = dotp_lut_a[bedi + j];
-            double b = dotp_lut_b[bedi + j];
-            double m = na_lut[masi + j];
-            epsilon[i*4 + j] += (mdb * b + a) * bs_ * m;
-        }
+    for (int i=0; i<N; i++){
+        epsilon[i] += (meth[i] - ave) * db * sig_inv;
     }
-
-#endif
 }
 
 void Phenotype::offset_epsilon(const double offset) {
@@ -487,15 +428,8 @@ void Phenotype::offset_epsilon(const double offset) {
 #ifdef _OPENMP
 #pragma omp parallel for
 #endif
-    for (int i=0; i<im4; i++) {
-        const int masi = mask4[i] * 4;
-#ifdef _OPENMP
-#pragma omp simd aligned(epsilon, na_lut : 32) simdlen(4)
-#endif
-        for (int j=0; j<4; j++) {
-            epsilon[i*4 + j] += offset * na_lut[masi + j];
-        }
-    }
+    for (int i=0; i<N; i++)
+        epsilon[i] += offset;
 }
 
 /*
@@ -537,10 +471,10 @@ void Phenotype::update_epsilon_sigma() {
 #ifdef _OPENMP
 #pragma omp parallel for simd reduction(+:sigmae)
 #endif
-    for (int i=0; i<im4; i++) {
-        for (int j=0; j<4; j++) {
-            sigmae += epsilon[i*4 + j] * epsilon[i*4 + j] * na_lut[mask4[i] * 4 + j];
-        }
+    for (int i=0; i<N; i++) {
+
+            sigmae += epsilon[i] * epsilon[i];
+        
     }
     set_sigmae(sigmae / double(nonas) * 0.5);
 #endif
@@ -551,7 +485,7 @@ void Phenotype::update_epsilon_sigma() {
 // for each of the phenotypes (stats are NA dependent)
 // ! one byte of bed  contains information for 4 individuals
 // ! one byte of phen contains information for 8 individuals
-void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, const int M, const int mbytes) {
+void PhenMgr::compute_markers_statistics(const double* meth_data, const int N, const int M, const int mbytes) {
 
     int rank;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -563,83 +497,56 @@ void PhenMgr::compute_markers_statistics(const unsigned char* bed, const int N, 
 
         const std::vector<unsigned char> mask4 = phen.get_mask4();
         const int im4 = phen.get_im4();
-
+        const int im4m1 = im4-1;
         double* mave = phen.get_mave();
         double* msig = phen.get_msig();
 
-        //double start = MPI_Wtime();
-#ifdef MANVECT
+                for (int i=0; i<M; i++) {
+                    size_t methix = size_t(i) * size_t(N);
+                    const double* methm = &meth_data[methix];
+                    double suma = 0.0;
+
+                    // calculating marker mean in 2 step process since size(phen) = 4*mbytes and size(methm) = N
+                    // currently only non-missing methylation data is allowed 
+                    for (int j=0; j<(im4-1); j++) {
 #ifdef _OPENMP
-#pragma omp parallel for
+#pragma omp simd reduction(+:suma)
 #endif
-        for (int i=0; i<M; i++) {
-            __m256d suma = _mm256_set1_pd(0.0);
-            __m256d sumb = _mm256_set1_pd(0.0);
-            __m256d luta, lutb, lutna;
-            size_t bedix = size_t(i) * size_t(mbytes);
-            const unsigned char* bedm = &bed[bedix];
-            for (int j=0; j<mbytes; j++) {
-                luta  = _mm256_load_pd(&dotp_lut_a[bedm[j] * 4]);
-                lutb  = _mm256_load_pd(&dotp_lut_b[bedm[j] * 4]);
-                lutna = _mm256_load_pd(&na_lut[mask4[j] * 4]);
-                luta  = _mm256_mul_pd(luta, lutna);
-                lutb  = _mm256_mul_pd(lutb, lutna);
-                suma  = _mm256_add_pd(suma, luta);
-                sumb  = _mm256_add_pd(sumb, lutb);
-            }
-            double asum = suma[0] + suma[1] + suma[2] + suma[3];
-            double bsum = sumb[0] + sumb[1] + sumb[2] + sumb[3];
-            double avg  = asum / bsum;
+                        for (int k=0; k<4; k++) 
+                            suma += methm[4*j + k] * na_lut[mask4[j] * 4 + k];
+                    }  
+                    for (int k=0; k<4; k++) {
+                        if (4*im4m1 + k < N){
+                            suma += methm[4*im4m1 + k] * na_lut[mask4[im4m1] * 4 + k];
+                        } 
+                    }
 
-            __m256d vave = _mm256_set1_pd(-avg);
-            __m256d sums = _mm256_set1_pd(0.0);
-            for (int j=0; j<mbytes; j++) {
-                luta  = _mm256_load_pd(&dotp_lut_a[bedm[j] * 4]);
-                lutb  = _mm256_load_pd(&dotp_lut_b[bedm[j] * 4]);
-                lutna = _mm256_load_pd(&na_lut[mask4[j] * 4]);
-                luta  = _mm256_add_pd(luta, vave);    // - mu
-                luta  = _mm256_mul_pd(luta, lutb);    // M -> 0.0
-                luta  = _mm256_mul_pd(luta, lutna);   // NAs
-                luta  = _mm256_mul_pd(luta, luta);    // ^2
-                sums  = _mm256_add_pd(sums, luta);    // sum
-            }
-            double sig = 1.0 / sqrt((sums[0] + sums[1] + sums[2] + sums[3]) / (double(phen.get_nonas()) - 1.0));
-            mave[i] = avg;
-            msig[i] = sig;
-            //if (i<10)
-            //    printf("marker %d: %20.15f +/- %20.15f, %20.15f / %20.15f\n", i, mave[i], msig[i], asum, bsum);
-        }
-#else
+                    //calculating vector of marker precision
+                    mave[i] = suma / double( phen.get_nonas() );
+                    double sumsqr = 0.0;
+
+                    for (int j=0; j<(im4-1); j++) {
 #ifdef _OPENMP
-#pragma omp parallel for
+#pragma omp simd reduction(+:sumsqr)
 #endif
-        for (int i=0; i<M; i++) {
-            size_t bedix = size_t(i) * size_t(mbytes);
-            const unsigned char* bedm = &bed[bedix];
-            double suma = 0.0;
-            double sumb = 0.0;
-            for (int j=0; j<im4; j++) {
+                        for (int k=0; k<4; k++) {
+                            double val = (methm[4*j + k] - mave[i]) * na_lut[mask4[j] * 4 + k];
+                            sumsqr += val * val;
+                        }
+                    }
 
-                for (int k=0; k<4; k++) {
-                    suma += dotp_lut_a[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k];
-                    sumb += dotp_lut_b[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k];
-                }
-            }
-            mave[i] = suma / sumb;
-            double sumsqr = 0.0;
-            for (int j=0; j<im4; j++) {
-                for (int k=0; k<4; k++) {
-                    double val = (dotp_lut_a[bedm[j] * 4 + k] - mave[i]) * dotp_lut_b[bedm[j] * 4 + k] * na_lut[mask4[j] * 4 + k];
-                    sumsqr += val * val;
-                }
-            }
-            msig[i] = 1.0 / sqrt(sumsqr / (double(phen.get_nonas()) - 1.0));
-            //printf("marker %8d: %20.15f +/- %20.15f\n", i, mave[i], msig[i]);
-        }
+                    for (int k=0; k<4; k++) {
+                        if (4*im4m1 + k < N){
+                            double val = (methm[4*im4m1 + k] - mave[i]) * na_lut[mask4[im4m1] * 4 + k];
+                            sumsqr += val * val;
+                        } 
+                    }
 
-#endif
-        //double end = MPI_Wtime();
-        //std::cout << "statistics took " << end - start << " seconds to run." << std::endl;
+                    if (sumsqr != 0.0)
+                        msig[i] = 1.0 / sqrt(sumsqr / (double( phen.get_nonas() ) - 1.0));
+                    else 
+                        msig[i] = 1.0;
+                }
     }
 }
 
@@ -717,7 +624,7 @@ void Phenotype::read_file(const Options& opt) {
         infile.close();
 
         assert(nas + nonas == N);
-
+        /*
         // Set last bits to 0 if ninds % 4 != 0
         const int m4 = line_n % 4;
         if (m4 != 0) {
@@ -731,7 +638,7 @@ void Phenotype::read_file(const Options& opt) {
             //std::cout << "fatal: missing implementation" << std::endl;
             //exit(1);
         }
-
+        */
         // Center and scale
         double avg = sum / double(nonas);
         if (opt.verbosity_level(3))

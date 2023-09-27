@@ -11,10 +11,10 @@ class Bayes {
 
 public:
 
-    const double V0E  = 0.0001;
-    const double S02E = 0.0001;
-    const double V0G  = 0.0001;
-    const double S02G = 0.0001;
+    const double V0E  = 0.01;//0.0001;
+    const double S02E = 0.01;//0.0001;
+    const double V0G  = 0.01;//0.0001;
+    const double S02G = 0.01;//0.0001;
 
 
     Bayes(const Options& opt, const Dimensions& dims) : opt(opt),
@@ -57,13 +57,13 @@ public:
 
     ~Bayes() {
         //std::cout << "## calling Bayes dtor" << std::endl;
-        if (bed_data != nullptr)  _mm_free(bed_data);
+        if (meth_data != nullptr)  _mm_free(meth_data);
     }
 
     void predict();
     void process();
     void cross_bim_files();
-    double dot_product(const int mloc, double* __restrict__ phen, const double mu, const double sigma);
+    double dot_product(const int mrki, double* __restrict__ phen, const double mu, const double sigma);
     void list_phen_files() const { opt.list_phen_files(); }
     int  get_N()  { return N;  } // Invariant over tasks
     int  get_M()  { return M;  } // Number of markers processed by task
@@ -74,7 +74,7 @@ public:
     int  get_marker_group(const int mglob) { 
         return group_index.at(mglob);
     }
-    void update_epsilon(const int* counts, const double* dbetas, const unsigned char* recv_bed);
+    void update_epsilon(const int* counts, const double* dbetas, const double* recv_meth);
     void check_openmp();
     void print_cva();
     void print_cvai();
@@ -86,7 +86,7 @@ private:
     const int Mt = 0;
     const int rank = 0;
     const int nranks = 0;
-    unsigned char* bed_data = nullptr;
+    double* meth_data = nullptr;
     const int K = 0;
     const int G = 0;
     
@@ -110,7 +110,7 @@ private:
     void check_options();
     void setup_processing();
     void set_block_of_markers();
-    void load_genotype();
+    void load_methylation_data();
     void load_covariates();
     void check_processing_setup();
     void read_group_index_file(const std::string& file);
