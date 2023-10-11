@@ -168,6 +168,11 @@ void Options::read_command_line_options(int argc, char** argv) {
             in_fname_base = argv[++i];
             ss << "--in-name-base " << in_fname_base << "\n";
 
+        } else if (!strcmp(argv[i], "--model")) {
+            if (i == argc - 1) fail_if_last(argv, i);
+            model = argv[++i];
+            ss << "--model " << model << "\n";
+
         } else {
             std::cout << "FATAL: option \"" << argv[i] << "\" unknown\n";
             exit(EXIT_FAILURE);

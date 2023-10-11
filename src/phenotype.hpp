@@ -57,6 +57,8 @@ private:
     double* mave     = nullptr;
     double* msig     = nullptr;
     double* epsilon_ = nullptr;
+    double* z_       = nullptr;
+    double* y_       = nullptr;
     int*    cass     = nullptr;
     double epssum = 0.0;
     double sigmae_ = 0.0;
@@ -113,6 +115,8 @@ public:
     double* get_mave()        { return mave; }
     double* get_msig()        { return msig; }
     double* get_epsilon()     { return epsilon_; }
+    double* get_z()           { return z_; }
+    double* get_y()           { return y_; } 
     double  get_epsilon_sum() { return epssum; }
     double  get_sigmae()      { return sigmae_; }
     void    set_sigmae(const double val) { sigmae_ = val; }
@@ -129,6 +133,7 @@ public:
     void shuffle_midx(const bool mimic_hydra);
     double sample_norm_rng();
     double sample_norm_rng(const double a, const double b);
+    double sample_trunc_norm_rng(const double a, const double b, const double c);
     double sample_beta_rng();
     double sample_beta_rng(const double a, const double b);
     double sample_unif_rng();
@@ -187,8 +192,15 @@ public:
     double get_marker_ave(const int idx) { return mave[idx]; }
     double get_marker_sig(const int idx) { return msig[idx]; }
 
+    void   init_latent();
+    void   update_latent(const int mloc, const double* meth);
+    void   offset_latent(const double offset);
+    void   update_latent_cov(const int covi, double delta);
+    double dot_product_cov(int covi);
+
+    void   init_epsilon();
     void   update_epsilon(const double* dbeta, const double* meth);
-    void   epsilon_update_cov(const int covi, double delta);
+    void   update_epsilon_cov(const int covi, double delta);
     double epsilon_sumsqr();
     double epsilon_sum();
 

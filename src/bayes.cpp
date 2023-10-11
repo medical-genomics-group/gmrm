@@ -65,7 +65,7 @@ void Bayes::predict() {
         double* beta_it = (double*) _mm_malloc(size_t(Mtot_) * sizeof(double), 32);
         check_malloc(beta_it, __LINE__, __FILE__);
 
-        uint start_iter = 100;
+        uint start_iter = 1000;
         //EO: use this one to speed up testing (avoids to read the entire bet history)
         //if (niter > 3) start_iter = niter - 3;
 
@@ -179,7 +179,7 @@ void Bayes::predict() {
             sigma += y_k[i] * y_k[i];
         sigma /= phen.get_nonas();
         //printf("### r: %d sigma = %20.15f\n", rank, sigma);
-        /*
+        
         MPI_File* mlma_fh = phen.get_outmlma_fh();
 
         double* Beta  = (double*) _mm_malloc(size_t(M) * sizeof(double), 32);
@@ -199,16 +199,16 @@ void Bayes::predict() {
 
             // Global index in current .bim
             int mglo = S + mrki;
-            std::string id = rsid.at(mglo);
+            //std::string id = rsid.at(mglo);
 
             // Skip markers with no corresponding rsid in reference bim file
-            if (m_refrsid.find(id) == m_refrsid.end()) {
+            //if (m_refrsid.find(id) == m_refrsid.end()) {
                 //printf("%d -> %d = %s not found in reference bim\n", mrki, mglo, id.c_str());
-                continue;
-            }
+            //    continue;
+            //}
 
             // Global marker index in reference bed
-            int rmglo = m_refrsid.find(id)->second;
+            //int rmglo = m_refrsid.find(id)->second;
 
             size_t methix = size_t(mrki) * size_t(N);
             const double* methm = &meth_data[methix];
@@ -248,23 +248,23 @@ void Bayes::predict() {
         //if (rank >= 0)
         //    printf("INFO   : intermediate time 3 = %.2f seconds.\n", t_3 - t_2);
     
-        const int LLEN = 123 + 1;
+        const int LLEN = 93 + 1;
         char* todump  = (char*) _mm_malloc(size_t(LLEN) * size_t(M) * sizeof(char), 32);
         check_malloc(todump, __LINE__, __FILE__);
 
         int n_rem = 0;
         for (int mrki=0; mrki<M; mrki++) {
             int mglo = S + mrki;
-            std::string id = rsid.at(mglo);
-            if (m_refrsid.find(id) == m_refrsid.end()) {
+            //std::string id = rsid.at(mglo);
+            //if (m_refrsid.find(id) == m_refrsid.end()) {
                 //|| id.compare("rs12562034") == 0m|| id.compare("rs188466450") == 0)
-                printf("WARNING: marker id %s excluded -- no match\n", id.c_str());
-                n_rem++;
-                continue;
-            }
-            int rmglo = m_refrsid.find(id)->second;
-            int cx = snprintf(&todump[(mrki - n_rem) * (LLEN - 1)], LLEN, "%20s %8d %8d %20.15f %20.15f %20.15f %20.15f\n",
-                              id.c_str(), mglo, rmglo, Beta[mrki], Tdist[mrki], Se[mrki], Pval[mrki]);
+            //    printf("WARNING: marker id %s excluded -- no match\n", id.c_str());
+            //    n_rem++;
+            //    continue;
+            //}
+            //int rmglo = m_refrsid.find(id)->second;
+            int cx = snprintf(&todump[(mrki - n_rem) * (LLEN - 1)], LLEN, "%8d %20.15f %20.15f %20.15f %20.15f\n",
+                              mglo, Beta[mrki], Tdist[mrki], Se[mrki], Pval[mrki]);
             assert(cx >= 0 && cx < LLEN);
         }
 
@@ -302,7 +302,7 @@ void Bayes::predict() {
         _mm_free(g_k);
         _mm_free(g);
         _mm_free(y_k);
-        */
+        
     }
     
     fflush(stdout);
@@ -378,6 +378,17 @@ void Bayes::process() {
         if (rank == 0)
             printf("\n\n@@@ ITERATION %5d\n", it);
 
+        std::string model = opt.get_model();
+        if (model == "probit"){
+            for (auto& phen : pmgr.get_phens()) {
+                // Init residual based on current latent variable 
+                phen.init_epsilon();
+            
+                // Init latent to 0
+                phen.init_latent();
+            }
+        }
+
         int pidx = 0;
         for (auto& phen : pmgr.get_phens()) {
             pidx += 1;
@@ -392,6 +403,11 @@ void Bayes::process() {
             //printf("new mu = %20.15f\n", phen.get_mu());
             phen.offset_epsilon(-phen.get_mu());
             //**BUG in original phen.epsilon_stats();
+
+            if(model=="probit")
+            {
+                phen.offset_latent(phen.get_mu());
+            }
 
             // Shuffling of the markers on its own PRNG (see README/wiki)
             if (opt.shuffle_markers())
@@ -408,9 +424,9 @@ void Bayes::process() {
                 for (auto& phen : pmgr.get_phens()) {
                     // Update epsilon with respect to previous covariate effect
                     double delta = phen.get_cov_delta(covi);
-                    phen.epsilon_update_cov(covi, delta);
+                    phen.update_epsilon_cov(covi, delta);
 
-                    double cov_num = phen.cov_dot_product(covi);
+                    double cov_num = phen.dot_product_cov(covi);
                     double cov_denom = phen.get_cov_denom(covi);
                     double delta_new = 0.0;
 
@@ -424,7 +440,7 @@ void Bayes::process() {
                     //fflush(stdout);
 
                     // Update epsilon with respect to the new covariate effect
-                    phen.epsilon_update_cov(covi, -delta_new);
+                    phen.update_epsilon_cov(covi, -delta_new);
                 }
             }
         }
@@ -478,9 +494,6 @@ void Bayes::process() {
                     }
                     double ts_debug_dp = MPI_Wtime();
                     double num = dot_product(mloc, phen.get_epsilon(), phen.get_marker_ave(mloc), phen.get_marker_sig(mloc));
-                    double te_debug_dp = MPI_Wtime();
-                    
-                    //printf("RANK %d, time dot product: %10.3f\n", rank, (te_debug_dp - ts_debug_dp));
 
                     //printf("num = %20.15f\n", num);
                     num += beta * double(phen.get_nonas() - 1);
@@ -542,6 +555,13 @@ void Bayes::process() {
                     }
 
                     dbeta -= phen.get_marker_beta(mloc);
+
+                    if(model=="probit"){
+                        // Add current marker effect to latent variable
+                        size_t methix = size_t(mrki) * size_t(N);
+                        double* meth = &meth_data[methix];
+                        phen.update_latent(mloc, meth);
+                    }
 
                     //printf("iteration %3d, rank %3d, marker %5d: dbeta = %20.15f, pheni = %d, %20.15f %20.15f\n", it, rank, mloc, dbeta, pheni, dbetas[pheni + 1], dbetas[pheni + 2]);
 
@@ -605,23 +625,18 @@ void Bayes::process() {
                            recv_dbetas, cnt_bet, dis_bet, MPI_DOUBLE, MPI_COMM_WORLD);
 
             double te_debug_rdb = MPI_Wtime();
-            //printf("recv_dbetas gathered...\n");
-            //fflush(stdout);
 
             double ts_debug_rm = MPI_Wtime();
             double* recv_meth = (double*) _mm_malloc(disp_meth * sizeof(double), 32);
-            //printf("recv_meth allocated...\n");
-            //fflush(stdout);
+
             check_malloc(recv_meth, __LINE__, __FILE__);
-            //printf("recv_meth checked...\n");
-            //fflush(stdout);
+
             size_t methix = size_t(mloc) * size_t(N);
 
             MPI_Allgatherv(&meth_data[methix], share_mrk ? size_t(N) : 0, MPI_DOUBLE,
                            recv_meth, cnt_meth, dis_meth, MPI_DOUBLE, MPI_COMM_WORLD);
             double te_debug_rm = MPI_Wtime();
-            //printf("recv_meth gathered...\n");
-            //fflush(stdout);
+
             double ts_debug_ue = MPI_Wtime();
             update_epsilon(cnt_bet, recv_dbetas, recv_meth);
             double te_debug_ue = MPI_Wtime();
@@ -629,16 +644,12 @@ void Bayes::process() {
             //if(rank == 0){
             //    printf("INFO: Time recv dbetas: %10.3f, Time recv meth: %10.3f, Time epsilon update: %10.3f\n", (te_debug_rdb - ts_debug_rdb), (te_debug_rm - ts_debug_rm), (te_debug_ue - ts_debug_ue));
             //}
-            //printf("epsilon updated...\n");
-            //fflush(stdout);
+
             MPI_Barrier(MPI_COMM_WORLD);
             double te_sync = MPI_Wtime();
             t_it_sync += te_sync - ts_sync;
-            //printf("time %f \n", t_it_sync);
-            //fflush(stdout);
+
             _mm_free(recv_meth);
-            //printf("mrk %d end loop\n", mloc);
-            //printf("-----------------------\n");
             fflush(stdout);
 
         } // End marker loop

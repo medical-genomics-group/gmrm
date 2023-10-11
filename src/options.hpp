@@ -40,6 +40,7 @@ public:
     std::string get_cov_file() const { return cov_file; };
     int get_cov_num() const { return cov_num; };
     std::string get_infname_base() const { return in_fname_base; };
+    std::string get_model() const { return model; };
 
 private:
     std::string bed_file = "";
@@ -70,4 +71,5 @@ private:
     std::string cov_file = "";
     int cov_num = 0;
     std::string in_fname_base = "";
+    std::string model = "linear";
 };

@@ -33,6 +33,12 @@ Phenotype::Phenotype(std::string fp, const Options& opt, const int N, const int 
     check_malloc(msig, __LINE__, __FILE__);
     epsilon_ = (double*) _mm_malloc(size_t(N) * sizeof(double), 32);
     check_malloc(epsilon_, __LINE__, __FILE__);
+    if(opt.get_model() == "probit"){
+        z_ = (double*) _mm_malloc(size_t(N) * sizeof(double), 32);
+        check_malloc(z_, __LINE__, __FILE__);
+        y_ = (double*) _mm_malloc(size_t(N) * sizeof(double), 32);
+        check_malloc(y_, __LINE__, __FILE__);
+    }
 
     if (!opt.predict()) {
         cass = (int*) _mm_malloc(G * K * sizeof(int), 32);
@@ -304,6 +310,10 @@ double Phenotype::sample_norm_rng() {
     return dist_d.norm_rng(epssum / double(nonas), get_sigmae() / double(nonas));
 }
 
+double Phenotype::sample_trunc_norm_rng(const double a, const double b, const double c) {
+    return dist_d.trunc_norm_rng(a, b, c);
+}
+
 double Phenotype::sample_beta_rng(const double a, const double b) {
     return dist_d.beta_rng(a, b);
 }
@@ -345,16 +355,55 @@ void Phenotype::shuffle_midx(const bool mimic_hydra) {
     }
 }
 
-// Update epsilon based on current covariate effect delta 
-void Phenotype::epsilon_update_cov(const int covi, double delta) {
-    double* epsilon = get_epsilon();
+// Set latent variable to 0 for all individuals
+void Phenotype::init_latent(){
+    double* z = get_z();
+
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+    for (int i=0; i<N; i++) 
+        z[i] = 0.0;
+}
+
+// Update latent variable based on current marker and effect
+void Phenotype::update_latent(const int mloc, const double* meth) {
+    double* z = get_z();
+    double beta = get_marker_beta(mloc);
+    double mave = get_marker_ave(mloc);
+    double msig = get_marker_sig(mloc);
+
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
     for (int i=0; i<N; i++) {
-        epsilon[i] += delta * Z_[i][covi];
+        double val = (meth[i] - mave) * msig;
+        z[i] += val * beta;
+    } 
+}
+
+void Phenotype::offset_latent(const double offset) {
+    double* z = get_z();
+
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+    for (int i=0; i<N; i++) {
+        z[i] += offset;
+    }
+}
+
+// Update latent variable based on current covariate effect delta
+void Phenotype::update_latent_cov(const int covi, double delta) {
+    double* z = get_z();
+    for (int i=0; i<N; i++) {
+        double offset = Z_[i][covi] * delta;
+        z[i] += offset;
     }
 }
 
 // Dot product for covariates
-double  Phenotype::cov_dot_product(int covi){
+double  Phenotype::dot_product_cov(int covi){
     double* epsilon = get_epsilon();
     double Ze = 0.0;
     for (int i=0; i<N; i++) {
@@ -403,6 +452,32 @@ void Phenotype::load_cov_deltas(){
     double te = MPI_Wtime();
 
     printf("INFO   : time to load %d covariate effects = %.2f seconds.\n", C, te - ts);
+}
+
+// Sample artificial target from truncated normal and update residual 
+void Phenotype::init_epsilon(){
+    double* z = get_z();
+    double* epsilon = get_epsilon();
+    double* y = get_y();
+
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+    for (int i=0; i<N; i++) {
+        epsilon[i] = sample_trunc_norm_rng(z[i], 1.0, y[i]) - z[i];     
+    }
+}
+
+// Add covariate contributions to base epsilon
+void Phenotype::update_epsilon_cov(const int covi, double delta) {
+    double* epsilon = get_epsilon();
+
+#ifdef _OPENMP
+#pragma omp parallel for
+#endif
+    for (int i=0; i<N; i++) {
+        epsilon[i] += delta * Z_[i][covi];    
+    }
 }
 
 // Add contributions to base epsilon
@@ -586,6 +661,7 @@ void Phenotype::read_file(const Options& opt) {
     std::regex re("\\s+");
 
     double* epsilon = get_epsilon();
+    double* y = get_y();
     double sum = 0.0;
 
     if (infile.is_open()) {
@@ -639,28 +715,35 @@ void Phenotype::read_file(const Options& opt) {
             //exit(1);
         }
         */
-        // Center and scale
-        double avg = sum / double(nonas);
-        if (opt.verbosity_level(3))
-            printf("phen avg = %20.15f\n", avg);
-
-        double sqn = 0.0;
-        for (int i=0; i<data.size(); i++) {
-            if (opt.verbosity_level(3) && i < 10)
-                std::cout << data[i] - avg  << std::endl;
-            if (data[i] == std::numeric_limits<double>::max()) {
-                epsilon[i] = 0.0;
-            } else {
-                epsilon[i] = data[i] - avg;
-                sqn += epsilon[i] * epsilon[i];
+        if (opt.get_model()=="probit"){
+            // Init epsilon as a sample from truncated normal
+            for (int i=0; i<N; i++) {
+                y[i] = double(data[i]);
+                epsilon[i] = sample_trunc_norm_rng(0.0, 1.0, y[i]);
             }
-        }
-        sqn = sqrt(double(nonas-1) / sqn);
-        if (opt.verbosity_level(3))
-            printf("phen sqn = %20.15f\n", sqn);
-        for (int i=0; i<data.size(); i++)
-            epsilon[i] *= sqn;
+        } else {
+            // Center and scale
+            double avg = sum / double(nonas);
+            if (opt.verbosity_level(3))
+                printf("phen avg = %20.15f\n", avg);
 
+            double sqn = 0.0;
+            for (int i=0; i<data.size(); i++) {
+                if (opt.verbosity_level(3) && i < 10)
+                    std::cout << data[i] - avg  << std::endl;
+                if (data[i] == std::numeric_limits<double>::max()) {
+                    epsilon[i] = 0.0;
+                } else {
+                    epsilon[i] = data[i] - avg;
+                    sqn += epsilon[i] * epsilon[i];
+                }
+            }
+            sqn = sqrt(double(nonas-1) / sqn);
+            if (opt.verbosity_level(3))
+                printf("phen sqn = %20.15f\n", sqn);
+            for (int i=0; i<data.size(); i++)
+                epsilon[i] *= sqn;
+        }    
     } else {
         std::cout << "FATAL: could not open phenotype file: " << filepath << std::endl;
         exit(EXIT_FAILURE);
